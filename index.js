@@ -104,11 +104,19 @@
             }
         }
 
-        function isGreenArrowImg(node) {
-            if (node.nodeType !== Node.ELEMENT_NODE || node.tagName !== 'IMG') return false;
-            const el = node;
-            return el.classList.contains('tt-ff-scouter-arrow') &&
-                (el.src || '').includes('green-arrow.svg');
+        /** @returns {'blue'|'green'|'red'|null} userFfColor from scouter arrow img, or null if not a recognized arrow */
+        function getUserFfColor(img) {
+            if (!img || img.nodeType !== Node.ELEMENT_NODE || img.tagName !== 'IMG') return null;
+            if (!img.classList.contains('tt-ff-scouter-arrow')) return null;
+            const src = (img.src || '').toLowerCase();
+            if (src.includes('blue-arrow.svg')) return 'blue';
+            if (src.includes('green-arrow.svg')) return 'green';
+            if (src.includes('red-arrow.svg')) return 'red';
+            return null;
+        }
+
+        function isFactionsPage() {
+            return /^\/factions\.php/.test(window.location.pathname);
         }
 
         function findUserLiFromDescendant(descendant) {
@@ -142,15 +150,24 @@
             })();
         }
 
+        // On factions.php run for any arrow; on page.php skip red.
+        function shouldProcessArrow(userFfColor) {
+            if (!userFfColor) return false;
+            if (isFactionsPage()) return true;
+            return userFfColor !== 'red';
+        }
+
         function handleAddedNodes(node) {
-            if (isGreenArrowImg(node)) {
+            const color = getUserFfColor(node);
+            if (color != null && shouldProcessArrow(color)) {
                 const found = findUserLiFromDescendant(node);
                 if (found) processRow(found.li, found.userId);
                 return;
             }
             if (node.nodeType === Node.ELEMENT_NODE && node.hasChildNodes()) {
                 for (const child of node.querySelectorAll ? node.querySelectorAll('img.tt-ff-scouter-arrow') : []) {
-                    if ((child.src || '').includes('green-arrow.svg')) {
+                    const childColor = getUserFfColor(child);
+                    if (shouldProcessArrow(childColor)) {
                         const found = findUserLiFromDescendant(child);
                         if (found) processRow(found.li, found.userId);
                     }
