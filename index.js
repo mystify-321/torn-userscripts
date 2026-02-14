@@ -77,13 +77,33 @@
             } catch (_) { }
         }
 
+        /** @returns {HTMLSpanElement} span with formatted networth text and optional styling */
         function formatNetworth(num) {
-            if (num == null || typeof num !== 'number' || Number.isNaN(num)) return '—';
+            const span = document.createElement('span');
+            if (num == null || typeof num !== 'number' || Number.isNaN(num)) {
+                span.textContent = '—';
+                return span;
+            }
             const n = Math.abs(num);
-            if (n >= 1e9) return (num / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
-            if (n >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
-            if (n >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
-            return String(Math.round(num));
+            let text;
+            if (n >= 1e9) {
+                text = (num / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+                span.textContent = text;
+                span.style.fontSize = '1.15em';
+                span.style.color = '#e74c3c';
+            } else if (n >= 500e6) {
+                text = (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+                span.textContent = text;
+                span.style.color = '#3498db';
+                span.style.fontWeight = 'bold';
+            } else if (n >= 1e6) {
+                span.textContent = (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+                span.style.color = '#666';
+            } else if (n >= 1e3) {
+                span.textContent = (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+                span.style.color = '#333';
+            }
+            return span;
         }
 
         async function getNetworth(userId) {
@@ -161,19 +181,18 @@
 
             (async () => {
                 const value = await getNetworth(userId);
-                const text = formatNetworth(value);
+                const nwSpan = formatNetworth(value);
                 if(isFactionsPage()) {
                     const row = document.createElement('div');
-                    row.textContent = text;
+                    row.appendChild(nwSpan);
                     row.dataset.networthRow = '1';
                     const levelDiv = li.querySelector('div.lvl');
                     levelDiv.insertAdjacentElement('afterend', row);
                 } else {
                     const levelSpan = li.querySelector('span.level');
                     if (levelSpan) {
-                        const span = document.createElement('span');
-                        span.textContent = ' / ' + text;
-                        levelSpan.appendChild(span);
+                        //levelSpan.appendChild(document.createTextNode(' / '));
+                        levelSpan.appendChild(nwSpan);
                     }
                 }
             })();
