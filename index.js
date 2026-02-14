@@ -126,15 +126,13 @@
             if (li.dataset.networthDone === '1') return;
             li.dataset.networthDone = '1';
 
-            const iconTray = li.querySelector('ul#iconTray');
-            if (!iconTray) return;
-
             (async () => {
                 const value = await getNetworth(userId);
                 const text = formatNetworth(value);
-                const item = document.createElement('li');
-                item.textContent = text;
-                iconTray.appendChild(item);
+                const row = document.createElement('div');
+                row.textContent = text;
+                row.dataset.networthRow = '1';
+                li.insertAdjacentElement('afterend', row);
             })();
         }
 
