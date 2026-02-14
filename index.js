@@ -143,10 +143,17 @@
             (async () => {
                 const value = await getNetworth(userId);
                 const text = formatNetworth(value);
-                const row = document.createElement('div');
-                row.textContent = text;
-                row.dataset.networthRow = '1';
-                li.insertAdjacentElement('afterend', row);
+                if(isFactionsPage()) {
+                    const row = document.createElement('div');
+                    row.textContent = text;
+                    row.dataset.networthRow = '1';
+                    li.appendChild(row);
+                } else {
+                    const span = document.createElement('span');
+                    span.textContent = ' / '+text;
+                    const levelSpan = li.querySelector('span.level span.value')
+                    levelSpan.insertAdjacentElement('beforeend', span);
+                }
             })();
         }
 
