@@ -4,6 +4,7 @@
 // @version      2026-02-14
 // @description  try to take over the world!
 // @author       You
+// @match        https://www.torn.com/index.php*
 // @match        https://www.torn.com/page.php*
 // @match        https://www.torn.com/factions.php*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
@@ -119,6 +120,24 @@
             return /^\/factions\.php/.test(window.location.pathname);
         }
 
+        function isIndexPage() {
+            return /^\/index\.php/.test(window.location.pathname);
+        }
+
+        /** Find li elements with profile link (XID) and span.level, process each for networth. */
+        function scanUserRowsWithLevel(root) {
+            if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
+            const listItems = root.querySelectorAll('li');
+            for (const li of listItems) {
+                const profileLink = li.querySelector('a[href*="profiles.php"]');
+                if (!profileLink) continue;
+                const xidMatch = (profileLink.getAttribute('href') || '').match(/XID=(\d+)/);
+                if (!xidMatch) continue;
+                if (!li.querySelector('span.level')) continue;
+                processRow(li, xidMatch[1]);
+            }
+        }
+
         function findUserLiFromDescendant(descendant) {
             let el = descendant;
             while (el && el !== document.body) {
@@ -147,12 +166,15 @@
                     const row = document.createElement('div');
                     row.textContent = text;
                     row.dataset.networthRow = '1';
-                    li.appendChild(row);
+                    const levelDiv = li.querySelector('div.lvl');
+                    levelDiv.insertAdjacentElement('afterend', row);
                 } else {
-                    const span = document.createElement('span');
-                    span.textContent = ' / '+text;
-                    const levelSpan = li.querySelector('span.level span.value')
-                    levelSpan.insertAdjacentElement('beforeend', span);
+                    const levelSpan = li.querySelector('span.level');
+                    if (levelSpan) {
+                        const span = document.createElement('span');
+                        span.textContent = ' / ' + text;
+                        levelSpan.appendChild(span);
+                    }
                 }
             })();
         }
@@ -165,6 +187,9 @@
         }
 
         function handleAddedNodes(node) {
+            if (isIndexPage() && node.nodeType === Node.ELEMENT_NODE) {
+                scanUserRowsWithLevel(node);
+            }
             const color = getUserFfColor(node);
             if (color != null && shouldProcessArrow(color)) {
                 const found = findUserLiFromDescendant(node);
@@ -193,6 +218,9 @@
                 }
             });
             observer.observe(document.body, { childList: true, subtree: true });
+            if (isIndexPage()) {
+                scanUserRowsWithLevel(document.body);
+            }
         }
 
         if (document.readyState === 'loading') {
