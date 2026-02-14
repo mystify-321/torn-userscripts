@@ -5,6 +5,7 @@
 // @description  try to take over the world!
 // @author       You
 // @match        https://www.torn.com/page.php*
+// @match        https://www.torn.com/factions.php*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -113,9 +114,14 @@
         function findUserLiFromDescendant(descendant) {
             let el = descendant;
             while (el && el !== document.body) {
-                if (el.tagName === 'LI' && el.className && typeof el.className === 'string') {
-                    const m = el.className.match(/\buser(\d+)\b/);
-                    if (m) return { li: el, userId: m[1] };
+                if (el.tagName === 'LI') {
+                    const classMatch = el.className && typeof el.className === 'string' && el.className.match(/\buser(\d+)\b/);
+                    if (classMatch) return { li: el, userId: classMatch[1] };
+                    const profileLink = el.querySelector('a[href*="profiles.php"]');
+                    if (profileLink) {
+                        const xidMatch = (profileLink.getAttribute('href') || '').match(/XID=(\d+)/);
+                        if (xidMatch) return { li: el, userId: xidMatch[1] };
+                    }
                 }
                 el = el.parentElement;
             }
