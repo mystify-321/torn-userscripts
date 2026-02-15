@@ -180,12 +180,37 @@
 
         function processRow(li, userId) {
             if (li.dataset.networthDone === '1') return;
+
             li.dataset.networthDone = '1';
 
             (async () => {
                 const value = await getNetworth(userId);
-                const nwSpan = formatNetworth(value, userId);
-                if(isFactionsPage()) {
+                const nwSpan = document.createElement('span');
+                const nwSpanContainer = formatNetworth(value, userId);
+                nwSpan.appendChild(nwSpanContainer);
+                console.log('nwSpanContainer.dataset.networthPiggy='+ nwSpanContainer.dataset.networthPiggy+' userId='+userId);
+                if (!isFactionsPage() && nwSpanContainer.dataset.networthPiggy === '1') {
+                    console.log('fetching user profile for userId', userId);
+                    const lastActionSpan = document.createElement('span');
+                    const userProfile = await fetch(`https://api.torn.com/user/${userId}?key=${PUBLIC_ACCESS_TOKEN}`);
+                    const userProfileData = await userProfile.json();
+
+                    const lastActionRelative = userProfileData.last_action.relative;
+                    lastActionSpan.textContent = formatLastActionRelative(lastActionRelative);
+                    lastActionSpan.style.border = '1px dashed #666';
+                    nwSpan.appendChild(lastActionSpan);
+
+                    const lifeCurrent = userProfileData.life.current;
+                    const lifeMax = userProfileData.life.maximum;
+                    if (lifeCurrent !== lifeMax) {
+                        const lifePercentage = Math.floor(lifeCurrent / lifeMax * 100);
+                        const lifeSpan = document.createElement('span');
+                        lifeSpan.textContent = '❤️'+lifePercentage + '%';
+                        nwSpan.appendChild(lifeSpan);
+                    }
+                }
+
+                if (isFactionsPage()) {
                     const row = document.createElement('div');
                     row.appendChild(nwSpan);
                     row.dataset.networthRow = '1';
@@ -199,6 +224,49 @@
                     }
                 }
             })();
+        }
+
+        // Returns the shortened last action string, e.g. "4m" for "4 minutes ago", "2h" for "2 hours ago"
+        function formatLastActionRelative(lastActionRelative) {
+            if (typeof lastActionRelative !== 'string') return lastActionRelative;
+
+            const secondsMatch = lastActionRelative.match(/^(\d+)\s*second/);
+            if (secondsMatch) {
+                return `${secondsMatch[1]}s`;
+            }
+            
+            const minuteMatch = lastActionRelative.match(/^(\d+)\s*minute/);
+            if (minuteMatch) {
+                return `${minuteMatch[1]}m`;
+            }
+
+            const hourMatch = lastActionRelative.match(/^(\d+)\s*hour/);
+            if (hourMatch) {
+                return `${hourMatch[1]}h`;
+            }
+
+            const dayMatch = lastActionRelative.match(/^(\d+)\s*day/);
+            if (dayMatch) {
+                return `${dayMatch[1]}d`;
+            }
+
+            const weekMatch = lastActionRelative.match(/^(\d+)\s*week/);
+            if (weekMatch) {
+                return `${weekMatch[1]}w`;
+            }
+
+            const monthMatch = lastActionRelative.match(/^(\d+)\s*month/);
+            if (monthMatch) {
+                return `${monthMatch[1]}m`;
+            }
+
+            const yearMatch = lastActionRelative.match(/^(\d+)\s*year/);
+            if (yearMatch) {
+                return `${yearMatch[1]}y`;
+            }
+
+            // If the string does not match minutes or hours, return as is
+            return lastActionRelative;
         }
 
         // On factions.php run for any arrow; on page.php skip red.
