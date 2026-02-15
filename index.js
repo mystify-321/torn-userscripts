@@ -78,8 +78,9 @@
         }
 
         /** @returns {HTMLSpanElement} span with formatted networth text and optional styling */
-        function formatNetworth(num) {
+        function formatNetworth(num, userId) {
             const span = document.createElement('span');
+            span.dataset.userId = userId;
             if (num == null || typeof num !== 'number' || Number.isNaN(num)) {
                 span.textContent = '—';
                 return span;
@@ -89,11 +90,13 @@
             if (n >= 1e9) {
                 text = (num / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
                 span.textContent = text;
+                span.dataset.networthPiggy = '1';
                 span.style.fontSize = '1.15em';
                 span.style.color = '#e74c3c';
             } else if (n >= 500e6) {
                 text = (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
                 span.textContent = text;
+                span.dataset.networthPiggy = '1';
                 span.style.color = '#3498db';
                 span.style.fontWeight = 'bold';
             } else if (n >= 1e6) {
@@ -181,7 +184,7 @@
 
             (async () => {
                 const value = await getNetworth(userId);
-                const nwSpan = formatNetworth(value);
+                const nwSpan = formatNetworth(value, userId);
                 if(isFactionsPage()) {
                     const row = document.createElement('div');
                     row.appendChild(nwSpan);
