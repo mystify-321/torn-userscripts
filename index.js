@@ -20,6 +20,28 @@
 
     const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const CACHE_KEY_PREFIX = 'torn_networth_';
+    const staggerRequestTimeoutMs = 250;
+    let staggeredRequestTimeEpoch = Date.now();
+
+    function getStaggeredRequestTime(){
+        const now = Date.now();
+        if (staggeredRequestTimeEpoch < now){
+            staggeredRequestTimeEpoch = now + staggerRequestTimeoutMs;
+            return null;
+        } else {
+            const time =  staggeredRequestTimeEpoch;
+            staggeredRequestTimeEpoch += staggerRequestTimeoutMs;
+            return time - now;
+        }
+    }
+
+    function awaitStaggeredRequestTime(){
+        const time = getStaggeredRequestTime();
+        if (time == null) {
+            Promise.resolve();
+        }
+        return new Promise(resolve => setTimeout(resolve, time));
+    }
 
     function showTokenModal(onSave) {
         const overlay = document.createElement('div');
@@ -99,6 +121,11 @@
                 span.dataset.networthPiggy = '1';
                 span.style.color = '#3498db';
                 span.style.fontWeight = 'bold';
+            } else if (n >= 150e6) {
+                text = (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+                span.textContent = text;
+                span.dataset.networthPiggy = '1';
+                span.style.color = '#33ff33';
             } else if (n >= 1e6) {
                 span.textContent = (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
                 span.style.color = '#666';
@@ -110,6 +137,7 @@
         }
 
         async function getNetworth(userId) {
+            await awaitStaggeredRequestTime();
             const cached = getNetworthCache(userId);
             if (cached != null) return cached;
             try {
@@ -133,9 +161,9 @@
             if (!img || img.nodeType !== Node.ELEMENT_NODE || img.tagName !== 'IMG') return null;
             if (!img.classList.contains('tt-ff-scouter-arrow')) return null;
             const src = (img.src || '').toLowerCase();
-            if (src.includes('blue-arrow.svg')) return 'blue';
-            if (src.includes('green-arrow.svg')) return 'green';
-            if (src.includes('red-arrow.svg')) return 'red';
+            if (src.endsWith('blue-arrow.svg')) return 'blue';
+            if (src.endsWith('green-arrow.svg')) return 'green';
+            if (src.endsWith('red-arrow.svg')) return 'red';
             return null;
         }
 
@@ -188,7 +216,6 @@
                 const nwSpan = document.createElement('span');
                 const nwSpanContainer = formatNetworth(value, userId);
                 nwSpan.appendChild(nwSpanContainer);
-                console.log('nwSpanContainer.dataset.networthPiggy='+ nwSpanContainer.dataset.networthPiggy+' userId='+userId);
                 if (!isFactionsPage() && nwSpanContainer.dataset.networthPiggy === '1') {
                     console.log('fetching user profile for userId', userId);
                     const lastActionSpan = document.createElement('span');
@@ -208,6 +235,8 @@
                         lifeSpan.textContent = '❤️'+lifePercentage + '%';
                         nwSpan.appendChild(lifeSpan);
                     }
+
+                    li.style.backgroundColor = '#000';
                 }
 
                 if (isFactionsPage()) {
@@ -277,11 +306,9 @@
         }
 
         function handleAddedNodes(node) {
-            if (isIndexPage() && node.nodeType === Node.ELEMENT_NODE) {
-                scanUserRowsWithLevel(node);
-            }
             const color = getUserFfColor(node);
             if (color != null && shouldProcessArrow(color)) {
+                console.log('handleAddedNodes: processing node', node, color);
                 const found = findUserLiFromDescendant(node);
                 if (found) processRow(found.li, found.userId);
                 return;
@@ -290,6 +317,7 @@
                 for (const child of node.querySelectorAll ? node.querySelectorAll('img.tt-ff-scouter-arrow') : []) {
                     const childColor = getUserFfColor(child);
                     if (shouldProcessArrow(childColor)) {
+                        console.log('handleAddedNodes: processing child', child, childColor);
                         const found = findUserLiFromDescendant(child);
                         if (found) processRow(found.li, found.userId);
                     }
