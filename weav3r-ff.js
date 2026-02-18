@@ -57,7 +57,7 @@
         const key = GM_getValue('FF_SCOUTER_API_KEY');
         if (!key) return null;
         const url = `https://ffscouter.com/api/v1/get-stats?key=${key}&targets=${userId}`;
-        console.log('getFfScore: url', url);
+        //console.log('getFfScore: url', url);
         const response = await new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -66,6 +66,11 @@
                 onerror: () => reject(new Error('GM_xmlhttpRequest failed'))
             });
         });
+        if (!response) return null;
+        if (response.status === 401 || response.status === 403) {
+            GM_setValue('FF_SCOUTER_API_KEY', null);
+            return null;
+        }
         if (response.status < 200 || response.status >= 300) return null;
         let data;
         try {
