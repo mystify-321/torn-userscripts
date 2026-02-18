@@ -221,7 +221,18 @@
                     const lastActionSpan = document.createElement('span');
                     const userProfile = await fetch(`https://api.torn.com/user/${userId}?key=${PUBLIC_ACCESS_TOKEN}`);
                     const userProfileData = await userProfile.json();
-
+                    const userStatusDescription = userProfileData?.status?.description;
+                    if (userStatusDescription && userStatusDescription === "Returning to Torn from Cayman Islands") {
+                        const pigSpan = document.createElement('span');
+                        pigSpan.textContent = '🐷';
+                        nwSpan.appendChild(pigSpan);
+                    }
+                    const job = userProfileData?.job?.job;
+                    if (job && job === 'Oil Rig') {
+                        const oilSpan = document.createElement('span');
+                        oilSpan.textContent = '🔥';
+                        nwSpan.appendChild(oilSpan);
+                    }
                     const lastActionRelative = userProfileData.last_action.relative;
                     lastActionSpan.textContent = formatLastActionRelative(lastActionRelative);
                     lastActionSpan.style.border = '1px dashed #666';
