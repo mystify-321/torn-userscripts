@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Load user networth
 // @namespace    http://tampermonkey.net/
-// @version      2026-02-14
+// @version      2026-03-04
 // @description  try to take over the world!
 // @author       You
 // @match        https://www.torn.com/index.php*
@@ -20,26 +20,23 @@
 
     const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const CACHE_KEY_PREFIX = 'torn_networth_';
-    const staggerRequestTimeoutMs = 250;
+    const staggerRequestTimeoutMs = 100;
     let staggeredRequestTimeEpoch = Date.now();
 
-    function getStaggeredRequestTime(){
+    function getStaggeredRequestTime() {
         const now = Date.now();
-        if (staggeredRequestTimeEpoch < now){
+        if (staggeredRequestTimeEpoch < now) {
             staggeredRequestTimeEpoch = now + staggerRequestTimeoutMs;
             return null;
-        } else {
-            const time =  staggeredRequestTimeEpoch;
-            staggeredRequestTimeEpoch += staggerRequestTimeoutMs;
-            return time - now;
         }
+        const time = staggeredRequestTimeEpoch;
+        staggeredRequestTimeEpoch += staggerRequestTimeoutMs;
+        return time - now;
     }
 
-    function awaitStaggeredRequestTime(){
+    function awaitStaggeredRequestTime() {
         const time = getStaggeredRequestTime();
-        if (time == null) {
-            Promise.resolve();
-        }
+        if (time == null) return Promise.resolve();
         return new Promise(resolve => setTimeout(resolve, time));
     }
 
@@ -108,22 +105,18 @@
                 return span;
             }
             const n = Math.abs(num);
-            let text;
             if (n >= 1e9) {
-                text = (num / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
-                span.textContent = text;
+                span.textContent = (num / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
                 span.dataset.networthPiggy = '1';
                 span.style.fontSize = '1.15em';
                 span.style.color = '#e74c3c';
             } else if (n >= 500e6) {
-                text = (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
-                span.textContent = text;
+                span.textContent = (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
                 span.dataset.networthPiggy = '1';
                 span.style.color = '#3498db';
                 span.style.fontWeight = 'bold';
             } else if (n >= 150e6) {
-                text = (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
-                span.textContent = text;
+                span.textContent = (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
                 span.dataset.networthPiggy = '1';
                 span.style.color = '#33ff33';
             } else if (n >= 1e6) {
@@ -156,183 +149,126 @@
             }
         }
 
-        /** @returns {'blue'|'green'|'red'|null} userFfColor from scouter arrow img, or null if not a recognized arrow */
-        function getUserFfColor(img) {
-            if (!img || img.nodeType !== Node.ELEMENT_NODE || img.tagName !== 'IMG') return null;
-            if (!img.classList.contains('tt-ff-scouter-arrow')) return null;
-            const src = (img.src || '').toLowerCase();
-            if (src.endsWith('blue-arrow.svg')) return 'blue';
-            if (src.endsWith('green-arrow.svg')) return 'green';
-            if (src.endsWith('red-arrow.svg')) return 'red';
-            return null;
+        const OVERLAY_STYLE = 'position:absolute;color:white;border-color:white;border-style:dashed;background:black;z-index:999;bottom:0px;display:block;justify-content:start;font-size:60%;';
+        const OVERLAY_STYLE_RIGHT = OVERLAY_STYLE +'right:0px;';
+        const OVERLAY_STYLE_LEFT = OVERLAY_STYLE +'left:0px;';
+
+        function isGreenOrBlueScouterArrow(imgElement) {
+            if (!imgElement || !imgElement.src) return false;
+            return imgElement.src.toLowerCase().endsWith('green-arrow.svg') || imgElement.src.toLowerCase().endsWith('blue-arrow.svg');
         }
 
-        function isFactionsPage() {
-            return /^\/factions\.php/.test(window.location.pathname);
+        /** Find honor-text-wrap and its user link; return { honorWrap, userId } or null. Only matches wraps with green/blue scouter arrow. */
+        function getHonorWrapAndUserIdFromArrow(node) {
+            console.log('nw - getHonorWrapAndUserIdFromArrow', node);
+            const honorWrap = node.closest('.honor-text-wrap');
+            if (!honorWrap || !honorWrap.closest) return null;
+            const userLink = honorWrap.closest('a[href*="profiles.php"]');
+            if (!userLink) return null;
+            const href = userLink.getAttribute('href') || '';
+            const xidMatch = href.match(/XID=(\d+)/);
+            if (!xidMatch) return null;
+            return { honorWrap, userId: xidMatch[1] };
         }
 
-        function isIndexPage() {
-            return /^\/index\.php/.test(window.location.pathname);
-        }
-
-        /** Find li elements with profile link (XID) and span.level, process each for networth. */
-        function scanUserRowsWithLevel(root) {
+        /** Collect all honor-text-wrap elements in root that have a user link ancestor, green/blue arrow, and are not yet processed */
+        function scanArrows(root) {
             if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
-            const listItems = root.querySelectorAll('li');
-            for (const li of listItems) {
-                const profileLink = li.querySelector('a[href*="profiles.php"]');
-                if (!profileLink) continue;
-                const xidMatch = (profileLink.getAttribute('href') || '').match(/XID=(\d+)/);
-                if (!xidMatch) continue;
-                if (!li.querySelector('span.level')) continue;
-                processRow(li, xidMatch[1]);
+            const arrows = root.querySelectorAll('img[src*="green-arrow.svg"], img[src*="blue-arrow.svg"]');
+            console.log('nw - scanArrows', arrows);
+            for (const arrow of arrows) {
+                handleAddedArrow(arrow);
             }
         }
 
-        function findUserLiFromDescendant(descendant) {
-            let el = descendant;
-            while (el && el !== document.body) {
-                if (el.tagName === 'LI') {
-                    const classMatch = el.className && typeof el.className === 'string' && el.className.match(/\buser(\d+)\b/);
-                    if (classMatch) return { li: el, userId: classMatch[1] };
-                    const profileLink = el.querySelector('a[href*="profiles.php"]');
-                    if (profileLink) {
-                        const xidMatch = (profileLink.getAttribute('href') || '').match(/XID=(\d+)/);
-                        if (xidMatch) return { li: el, userId: xidMatch[1] };
-                    }
-                }
-                el = el.parentElement;
-            }
-            return null;
+        function formatLastActionRelative(lastActionRelative) {
+            if (typeof lastActionRelative !== 'string') return lastActionRelative;
+            const secondsMatch = lastActionRelative.match(/^(\d+)\s*second/);
+            if (secondsMatch) return `${secondsMatch[1]}s`;
+            const minuteMatch = lastActionRelative.match(/^(\d+)\s*minute/);
+            if (minuteMatch) return `${minuteMatch[1]}m`;
+            const hourMatch = lastActionRelative.match(/^(\d+)\s*hour/);
+            if (hourMatch) return `${hourMatch[1]}h`;
+            const dayMatch = lastActionRelative.match(/^(\d+)\s*day/);
+            if (dayMatch) return `${dayMatch[1]}d`;
+            const weekMatch = lastActionRelative.match(/^(\d+)\s*week/);
+            if (weekMatch) return `${weekMatch[1]}w`;
+            const monthMatch = lastActionRelative.match(/^(\d+)\s*month/);
+            if (monthMatch) return `${monthMatch[1]}m`;
+            const yearMatch = lastActionRelative.match(/^(\d+)\s*year/);
+            if (yearMatch) return `${yearMatch[1]}y`;
+            return lastActionRelative;
         }
 
-        function processRow(li, userId) {
-            if (li.dataset.networthDone === '1') return;
+        function processRow(honorWrap, userId) {
+            console.log('nw - processRow', honorWrap, userId);
+            
+            if (honorWrap.dataset.networthDone === '1') return;
+            honorWrap.dataset.networthDone = '1';
+            
+            console.log('nw - processRow marked done', honorWrap, userId);
 
-            li.dataset.networthDone = '1';
+
+            if (getComputedStyle(honorWrap).position === 'static') {
+                honorWrap.style.position = 'relative';
+            }
+
+            const overlayRight = document.createElement('div');
+            overlayRight.style.cssText = OVERLAY_STYLE_RIGHT;
+            honorWrap.appendChild(overlayRight);
+
+            const overlayLeft = document.createElement('div');
+            overlayLeft.style.cssText = OVERLAY_STYLE_LEFT;
+            honorWrap.appendChild(overlayLeft);
 
             (async () => {
-                const value = await getNetworth(userId);
-                const nwSpan = document.createElement('span');
-                const nwSpanContainer = formatNetworth(value, userId);
-                nwSpan.appendChild(nwSpanContainer);
-                if (!isFactionsPage() && nwSpanContainer.dataset.networthPiggy === '1') {
-                    console.log('fetching user profile for userId', userId);
-                    const lastActionSpan = document.createElement('span');
-                    const userProfile = await fetch(`https://api.torn.com/user/${userId}?key=${PUBLIC_ACCESS_TOKEN}`);
-                    const userProfileData = await userProfile.json();
-                    const userStatusDescription = userProfileData?.status?.description;
-                    if (userStatusDescription && userStatusDescription === "Returning to Torn from Cayman Islands") {
-                        const pigSpan = document.createElement('span');
-                        pigSpan.textContent = '🐷';
-                        nwSpan.appendChild(pigSpan);
-                    }
-                    const job = userProfileData?.job?.job;
-                    if (job && job === 'Oil Rig') {
-                        const oilSpan = document.createElement('span');
-                        oilSpan.textContent = '🔥';
-                        nwSpan.appendChild(oilSpan);
-                    }
-                    const lastActionRelative = userProfileData.last_action.relative;
-                    lastActionSpan.textContent = formatLastActionRelative(lastActionRelative);
-                    lastActionSpan.style.border = '1px dashed #666';
-                    nwSpan.appendChild(lastActionSpan);
+                const [nwValue, profileRes] = await Promise.all([
+                    getNetworth(userId),
+                    fetch(`https://api.torn.com/user/${userId}?key=${PUBLIC_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null)
+                ]);
+                overlayRight.appendChild(formatNetworth(nwValue, userId));
 
-                    const lifeCurrent = userProfileData.life.current;
-                    const lifeMax = userProfileData.life.maximum;
-                    if (lifeCurrent !== lifeMax) {
-                        const lifePercentage = Math.floor(lifeCurrent / lifeMax * 100);
-                        const lifeSpan = document.createElement('span');
-                        lifeSpan.textContent = '❤️'+lifePercentage + '%';
-                        nwSpan.appendChild(lifeSpan);
-                    }
+                const userProfileData = profileRes || {};
 
-                    li.style.backgroundColor = '#000';
+                const lifeCurrent = userProfileData.life?.current;
+                const lifeMax = userProfileData.life?.maximum;
+                if (typeof lifeCurrent === 'number' && typeof lifeMax === 'number' && lifeMax > 0 && lifeCurrent !== lifeMax) {
+                    const lifePercentage = Math.floor(lifeCurrent / lifeMax * 100);
+                    const lifeSpan = document.createElement('span');
+                    lifeSpan.textContent = '❤️' + lifePercentage + '%';
+                    overlayLeft.appendChild(lifeSpan);
                 }
 
-                if (isFactionsPage()) {
-                    const row = document.createElement('div');
-                    row.appendChild(nwSpan);
-                    row.dataset.networthRow = '1';
-                    const levelDiv = li.querySelector('div.lvl');
-                    levelDiv.insertAdjacentElement('afterend', row);
-                } else {
-                    const levelSpan = li.querySelector('span.level');
-                    if (levelSpan) {
-                        //levelSpan.appendChild(document.createTextNode(' / '));
-                        levelSpan.appendChild(nwSpan);
-                    }
+                if (userProfileData.job?.job === 'Oil Rig') {
+                    const oilSpan = document.createElement('span');
+                    oilSpan.textContent = '🔥';
+                    overlayLeft.appendChild(oilSpan);
+                }
+
+                if (userProfileData.status?.description === 'Returning to Torn from Cayman Islands') {
+                    const pigSpan = document.createElement('span');
+                    pigSpan.textContent = '🐷';
+                    overlayLeft.appendChild(pigSpan);
+                }
+
+                const lastActionRelative = userProfileData.last_action?.relative;
+                if (lastActionRelative != null) {
+                    const lastActionSpan = document.createElement('span');
+                    lastActionSpan.textContent = formatLastActionRelative(lastActionRelative);
+                    lastActionSpan.style.border = '1px dashed #666';
+                    lastActionSpan.style.marginLeft = '4px';
+                    overlayRight.appendChild(lastActionSpan);
                 }
             })();
         }
 
-        // Returns the shortened last action string, e.g. "4m" for "4 minutes ago", "2h" for "2 hours ago"
-        function formatLastActionRelative(lastActionRelative) {
-            if (typeof lastActionRelative !== 'string') return lastActionRelative;
-
-            const secondsMatch = lastActionRelative.match(/^(\d+)\s*second/);
-            if (secondsMatch) {
-                return `${secondsMatch[1]}s`;
-            }
-            
-            const minuteMatch = lastActionRelative.match(/^(\d+)\s*minute/);
-            if (minuteMatch) {
-                return `${minuteMatch[1]}m`;
-            }
-
-            const hourMatch = lastActionRelative.match(/^(\d+)\s*hour/);
-            if (hourMatch) {
-                return `${hourMatch[1]}h`;
-            }
-
-            const dayMatch = lastActionRelative.match(/^(\d+)\s*day/);
-            if (dayMatch) {
-                return `${dayMatch[1]}d`;
-            }
-
-            const weekMatch = lastActionRelative.match(/^(\d+)\s*week/);
-            if (weekMatch) {
-                return `${weekMatch[1]}w`;
-            }
-
-            const monthMatch = lastActionRelative.match(/^(\d+)\s*month/);
-            if (monthMatch) {
-                return `${monthMatch[1]}m`;
-            }
-
-            const yearMatch = lastActionRelative.match(/^(\d+)\s*year/);
-            if (yearMatch) {
-                return `${yearMatch[1]}y`;
-            }
-
-            // If the string does not match minutes or hours, return as is
-            return lastActionRelative;
-        }
-
-        // On factions.php run for any arrow; on page.php skip red.
-        function shouldProcessArrow(userFfColor) {
-            if (!userFfColor) return false;
-            if (isFactionsPage()) return true;
-            return userFfColor !== 'red';
-        }
-
-        function handleAddedNodes(node) {
-            const color = getUserFfColor(node);
-            if (color != null && shouldProcessArrow(color)) {
-                console.log('handleAddedNodes: processing node', node, color);
-                const found = findUserLiFromDescendant(node);
-                if (found) processRow(found.li, found.userId);
-                return;
-            }
-            if (node.nodeType === Node.ELEMENT_NODE && node.hasChildNodes()) {
-                for (const child of node.querySelectorAll ? node.querySelectorAll('img.tt-ff-scouter-arrow') : []) {
-                    const childColor = getUserFfColor(child);
-                    if (shouldProcessArrow(childColor)) {
-                        console.log('handleAddedNodes: processing child', child, childColor);
-                        const found = findUserLiFromDescendant(child);
-                        if (found) processRow(found.li, found.userId);
-                    }
-                }
+        function handleAddedArrow(arrow) {
+            console.log('nw - handleAddedArrow', arrow);
+            const found = getHonorWrapAndUserIdFromArrow(arrow);
+            if (found) {
+                processRow(found.honorWrap, found.userId);
+            }else{
+                console.log('nw - honor wrap not found for arrow');
             }
         }
 
@@ -342,14 +278,15 @@
                     if (mut.type !== 'childList' || !mut.addedNodes.length) continue;
                     for (const node of mut.addedNodes) {
                         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-                        handleAddedNodes(node);
+                        if (!isGreenOrBlueScouterArrow(node)) {
+                            continue;
+                        }
+                        handleAddedArrow(node);
                     }
                 }
             });
             observer.observe(document.body, { childList: true, subtree: true });
-            if (isIndexPage()) {
-                scanUserRowsWithLevel(document.body);
-            }
+            scanArrows(document.body);
         }
 
         if (document.readyState === 'loading') {
