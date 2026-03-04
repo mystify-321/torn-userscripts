@@ -126,6 +126,7 @@
                 span.textContent = (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
                 span.style.color = '#333';
             }
+            span.title = 'Networth: $' + num.toLocaleString();
             return span;
         }
 
@@ -222,13 +223,23 @@
             honorWrap.appendChild(overlayLeft);
 
             (async () => {
-                const [nwValue, profileRes] = await Promise.all([
-                    getNetworth(userId),
-                    fetch(`https://api.torn.com/user/${userId}?key=${PUBLIC_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null)
-                ]);
-                overlayRight.appendChild(formatNetworth(nwValue, userId));
-
+                const nwValue = await getNetworth(userId);
+                const asdf = formatNetworth(nwValue, userId);
+                overlayRight.appendChild(asdf);
+                
+                if (asdf.dataset.networthPiggy !== '1') {
+                    return;
+                }
+                
+                const profileRes = await fetch(`https://api.torn.com/user/${userId}?key=${PUBLIC_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null);
                 const userProfileData = profileRes || {};
+
+                if (userProfileData.basicicons?.icon72 === 'Newbie') {
+                    const newPlayerSpan = document.createElement('span');
+                    newPlayerSpan.textContent = '👶';
+                    newPlayerSpan.title = 'New player';
+                    overlayLeft.appendChild(newPlayerSpan);
+                }
 
                 const lifeCurrent = userProfileData.life?.current;
                 const lifeMax = userProfileData.life?.maximum;
@@ -236,18 +247,21 @@
                     const lifePercentage = Math.floor(lifeCurrent / lifeMax * 100);
                     const lifeSpan = document.createElement('span');
                     lifeSpan.textContent = '❤️' + lifePercentage + '%';
+                    lifeSpan.title = 'Life percentage: ' + lifePercentage + '%';
                     overlayLeft.appendChild(lifeSpan);
                 }
 
                 if (userProfileData.job?.job === 'Oil Rig') {
                     const oilSpan = document.createElement('span');
                     oilSpan.textContent = '🔥';
+                    oilSpan.title = 'Working at Oil Rig';
                     overlayLeft.appendChild(oilSpan);
                 }
 
                 if (userProfileData.status?.description === 'Returning to Torn from Cayman Islands') {
                     const pigSpan = document.createElement('span');
                     pigSpan.textContent = '🐷';
+                    pigSpan.title = 'Returning to Torn from Cayman Islands';
                     overlayLeft.appendChild(pigSpan);
                 }
 
@@ -257,6 +271,7 @@
                     lastActionSpan.textContent = formatLastActionRelative(lastActionRelative);
                     lastActionSpan.style.border = '1px dashed #666';
                     lastActionSpan.style.marginLeft = '4px';
+                    lastActionSpan.title = 'Last action: ' + lastActionRelative;
                     overlayRight.appendChild(lastActionSpan);
                 }
             })();
