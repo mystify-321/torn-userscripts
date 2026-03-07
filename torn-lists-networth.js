@@ -155,6 +155,113 @@
         const OVERLAY_STYLE = 'position:absolute;color:white;border-color:white;border-style:dashed;background:black;z-index:999;bottom:0px;display:block;justify-content:start;font-size:60%;';
         const OVERLAY_STYLE_RIGHT = OVERLAY_STYLE +'right:0px;';
         const OVERLAY_STYLE_LEFT = OVERLAY_STYLE +'left:0px;';
+        
+        const FILTER_KEYS = {
+            MIN_NETWORTH: 'filter_min_networth',
+            MIN_LIFE: 'filter_min_life',
+            MAX_LIFE: 'filter_max_life',
+            MIN_LAST_ACTION: 'filter_min_last_action',
+            MAX_LAST_ACTION: 'filter_max_last_action'
+        };
+
+        function createFilterArea() {
+            const filterContainer = document.createElement('div');
+            filterContainer.className = 'mugger-filter-area';
+            filterContainer.style.cssText = 'border: 1px solid #ccc; border-radius: 5px; margin-bottom: 10px; padding: 10px; font-family: Arial, sans-serif;';
+
+            const header = document.createElement('div');
+            header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; cursor: pointer; font-weight: bold;';
+            header.innerHTML = '<span>Mugger filters</span><span class="collapse-arrow">▼</span>';
+            filterContainer.appendChild(header);
+
+            const content = document.createElement('div');
+            content.style.cssText = 'display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; align-items: flex-end;';
+            filterContainer.appendChild(content);
+
+            header.onclick = () => {
+                const isHidden = content.style.display === 'none';
+                content.style.display = isHidden ? 'flex' : 'none';
+                header.querySelector('.collapse-arrow').textContent = isHidden ? '▼' : '▲';
+            };
+
+            const createInput = (label, key, defaultValue = '') => {
+                const wrapper = document.createElement('div');
+                wrapper.style.cssText = 'display: flex; flex-direction: column; font-size: 12px;';
+                const labelEl = document.createElement('label');
+                labelEl.textContent = label;
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.value = GM_getValue(key, defaultValue);
+                input.style.cssText = 'width: 80px; padding: 4px; border: 1px solid #ccc; border-radius: 3px;';
+                input.onchange = () => GM_setValue(key, input.value);
+                wrapper.appendChild(labelEl);
+                wrapper.appendChild(input);
+                content.appendChild(wrapper);
+                return input;
+            };
+
+            const minNetworth = createInput('Min Networth', FILTER_KEYS.MIN_NETWORTH);
+            const minLife = createInput('Min Life %', FILTER_KEYS.MIN_LIFE);
+            const maxLife = createInput('Max Life %', FILTER_KEYS.MAX_LIFE);
+            const minLastAction = createInput('Min Last Action (m)', FILTER_KEYS.MIN_LAST_ACTION);
+            const maxLastAction = createInput('Max Last Action (m)', FILTER_KEYS.MAX_LAST_ACTION);
+
+            const filterBtn = document.createElement('button');
+            filterBtn.textContent = 'Filter';
+            filterBtn.style.cssText = 'padding: 6px 12px; background: #2d7d46; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: bold;';
+            filterBtn.onclick = () => applyFilters(filterContainer.closest('.userlist-wrapper'));
+            content.appendChild(filterBtn);
+
+            return filterContainer;
+        }
+
+        function applyFilters(wrapper) {
+            if (!wrapper) return;
+            const minNetworth = parseFloat(GM_getValue(FILTER_KEYS.MIN_NETWORTH, 0)) || 0;
+            const minLife = parseFloat(GM_getValue(FILTER_KEYS.MIN_LIFE, 0)) || 0;
+            const maxLife = parseFloat(GM_getValue(FILTER_KEYS.MAX_LIFE, 100)) || 100;
+            const minLastAction = parseFloat(GM_getValue(FILTER_KEYS.MIN_LAST_ACTION, 0)) || 0;
+            const maxLastAction = parseFloat(GM_getValue(FILTER_KEYS.MAX_LAST_ACTION, 999999)) || 999999;
+
+            const nowTimestamp = Math.floor(Date.now() / 1000);
+            const listWrap = wrapper.querySelector('.user-info-list-wrap');
+            if (!listWrap) return;
+
+            const listItems = listWrap.querySelectorAll('li[class*="user"]');
+            listItems.forEach(li => {
+                const ttHidden = li.dataset.hideReason !== undefined;
+                if (ttHidden && li.classList.contains('tt-hidden')) return;
+
+                const honorWrap = li.querySelector('.honor-text-wrap');
+                const networth = parseFloat(honorWrap?.dataset.networth) || 0;
+                const lifePercentage = parseFloat(honorWrap?.dataset.lifePercentage) || 100;
+                const lastActionTimestamp = parseInt(honorWrap?.dataset.lastAction) || nowTimestamp;
+                const lastActionMinutes = (nowTimestamp - lastActionTimestamp) / 60;
+
+                let visible = true;
+                if (networth < minNetworth) visible = false;
+                if (lifePercentage < minLife || lifePercentage > maxLife) visible = false;
+                if (lastActionMinutes < minLastAction || lastActionMinutes > maxLastAction) visible = false;
+
+                if (visible) {
+                    if (li.classList.contains('tt-hidden')) {
+                        li.classList.remove('tt-hidden');
+                    }
+                } else {
+                    if (!li.classList.contains('tt-hidden')) {
+                        li.classList.add('tt-hidden');
+                    }
+                }
+            });
+        }
+
+        function injectFilterAreaIfNeeded(node) {
+            const wrapper = node.closest ? node.closest('.userlist-wrapper') : null;
+            if (wrapper && !wrapper.querySelector('.mugger-filter-area')) {
+                const filterArea = createFilterArea();
+                wrapper.prepend(filterArea);
+            }
+        }
 
         function isGreenOrBlueScouterArrow(imgElement) {
             if (!imgElement || !imgElement.src) return false;
@@ -228,6 +335,7 @@
                 const nwValue = await getNetworth(userId);
                 const asdf = formatNetworth(nwValue, userId);
                 overlayRight.appendChild(asdf);
+                honorWrap.dataset.networth = nwValue ? `${nwValue}` : null;
                 
                 if (asdf.dataset.networthPiggy !== '1') {
                     return;
@@ -290,7 +398,12 @@
                     if (mut.type !== 'childList' || !mut.addedNodes.length) continue;
                     for (const node of mut.addedNodes) {
                         if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                        
+                        injectFilterAreaIfNeeded(node);
+
                         if (!isGreenOrBlueScouterArrow(node)) {
+                            // Also check children for arrows if node is a container
+                            scanArrows(node);
                             continue;
                         }
                         handleAddedArrow(node);
@@ -298,6 +411,7 @@
                 }
             });
             observer.observe(document.body, { childList: true, subtree: true });
+            injectFilterAreaIfNeeded(document.body);
             scanArrows(document.body);
         }
 
