@@ -128,6 +128,7 @@
                 span.style.color = '#333';
             }
             span.title = 'Networth: $' + num.toLocaleString();
+            span.dataset.networth = num ? `${num}` : null;
             return span;
         }
 
@@ -249,14 +250,8 @@
                     const lifeSpan = document.createElement('span');
                     lifeSpan.textContent = '❤️' + lifePercentage + '%';
                     lifeSpan.title = 'Life percentage: ' + lifePercentage + '%';
+                    honorWrap.dataset.lifePercentage = `${lifePercentage}`;
                     overlayLeft.appendChild(lifeSpan);
-                }
-
-                if (userProfileData.job?.job === 'Oil Rig') {
-                    const oilSpan = document.createElement('span');
-                    oilSpan.textContent = '🔥';
-                    oilSpan.title = 'Working at Oil Rig';
-                    overlayLeft.appendChild(oilSpan);
                 }
 
                 if (userProfileData.status?.description === 'Returning to Torn from Cayman Islands') {
@@ -268,6 +263,7 @@
 
                 const lastActionRelative = userProfileData.last_action?.relative;
                 if (lastActionRelative != null) {
+                    honorWrap.dataset.lastAction = userProfileData.last_action?.timestamp; //1772893224
                     const lastActionSpan = document.createElement('span');
                     lastActionSpan.textContent = formatLastActionRelative(lastActionRelative);
                     lastActionSpan.style.border = '1px dashed #666';
