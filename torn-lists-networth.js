@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Torn Load user networth
+// @name         Torn tools mugger addon
 // @namespace    http://tampermonkey.net/
-// @version      2026-03-04
+// @version      2026-03-07
 // @description  Torn tools mugger addon
 // @author       You
 // @match        https://www.torn.com/index.php*
