@@ -2,7 +2,7 @@
 // @name         Torn Load user networth
 // @namespace    http://tampermonkey.net/
 // @version      2026-03-04
-// @description  try to take over the world!
+// @description  Torn tools mugger addon
 // @author       You
 // @match        https://www.torn.com/index.php*
 // @match        https://www.torn.com/page.php*
@@ -10,6 +10,7 @@
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @license      MIT
 // ==/UserScript==
 
 // Set PUBLIC_ACCESS_TOKEN in Tampermonkey: Dashboard → this script → Storage (key: PUBLIC_ACCESS_TOKEN).
