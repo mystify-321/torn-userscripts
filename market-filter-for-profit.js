@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Hide the non profitable
 // @namespace    http://tampermonkey.net/
-// @version      2026-03-07
+// @version      2026-03-08_01
 // @description  Hide all the things that are not sellable with a profit
 // @author       You
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
@@ -9,6 +9,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
+// @license      MIT
 // ==/UserScript==
 
 (function() {
@@ -20,9 +21,13 @@
     `);
 
     const STORAGE_KEY_HIDE = 'market_filter_hide_without_profit';
+    const STORAGE_KEY_MIN_AMOUNT = 'market_filter_min_amount_profit';
+    const STORAGE_KEY_MIN_PERCENT = 'market_filter_min_percent_profit';
     const STORAGE_KEY_PRICES = 'market_item_sell_prices';
 
     let hideWithoutProfit = GM_getValue(STORAGE_KEY_HIDE, false);
+    let minAmountProfit = GM_getValue(STORAGE_KEY_MIN_AMOUNT, 0);
+    let minPercentProfit = GM_getValue(STORAGE_KEY_MIN_PERCENT, 0);
     let sellPrices = JSON.parse(GM_getValue(STORAGE_KEY_PRICES, '{}'));
 
     function saveSellPrice(itemId, price) {
@@ -63,7 +68,9 @@
             li.classList.remove('tt-hidden');
         } else {
             li.classList.remove('tt-no-price');
-            if (hideWithoutProfit && marketPrice >= sellPrice) {
+            const profit = sellPrice - marketPrice;
+            const profitPercent = (profit / marketPrice) * 100;
+            if (hideWithoutProfit && (profit < minAmountProfit || profitPercent < minPercentProfit)) {
                 li.classList.add('tt-hidden');
             } else {
                 li.classList.remove('tt-hidden');
@@ -84,12 +91,17 @@
         document.querySelectorAll('ul[class^="itemList___"] li').forEach(filterLi);
     }
 
-    function injectCheckbox() {
+    function injectFilters() {
         const wrapper = document.querySelector('div[class^="filtersWrapper___"]');
         if (!wrapper || wrapper.querySelector('#tt-hide-no-profit-checkbox')) return;
 
+        const container = document.createElement('div');
+        container.style.display = 'inline-flex';
+        container.style.alignItems = 'center';
+        container.style.gap = '10px';
+        container.style.marginLeft = '10px';
+
         const label = document.createElement('label');
-        label.style.marginLeft = '10px';
         label.style.display = 'inline-flex';
         label.style.alignItems = 'center';
         label.style.cursor = 'pointer';
@@ -108,7 +120,45 @@
 
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode('Hide without profit'));
-        wrapper.appendChild(label);
+        container.appendChild(label);
+
+        // Min Amount Input
+        const minAmountLabel = document.createElement('label');
+        minAmountLabel.style.display = 'inline-flex';
+        minAmountLabel.style.alignItems = 'center';
+        minAmountLabel.appendChild(document.createTextNode('Min $ profit:'));
+        const minAmountInput = document.createElement('input');
+        minAmountInput.type = 'number';
+        minAmountInput.value = minAmountProfit;
+        minAmountInput.style.width = '80px';
+        minAmountInput.style.marginLeft = '5px';
+        minAmountInput.addEventListener('input', (e) => {
+            minAmountProfit = parseInt(e.target.value, 10) || 0;
+            GM_setValue(STORAGE_KEY_MIN_AMOUNT, minAmountProfit);
+            filterAllItems();
+        });
+        minAmountLabel.appendChild(minAmountInput);
+        container.appendChild(minAmountLabel);
+
+        // Min Percent Input
+        const minPercentLabel = document.createElement('label');
+        minPercentLabel.style.display = 'inline-flex';
+        minPercentLabel.style.alignItems = 'center';
+        minPercentLabel.appendChild(document.createTextNode('Min % profit:'));
+        const minPercentInput = document.createElement('input');
+        minPercentInput.type = 'number';
+        minPercentInput.value = minPercentProfit;
+        minPercentInput.style.width = '50px';
+        minPercentInput.style.marginLeft = '5px';
+        minPercentInput.addEventListener('input', (e) => {
+            minPercentProfit = parseFloat(e.target.value) || 0;
+            GM_setValue(STORAGE_KEY_MIN_PERCENT, minPercentProfit);
+            filterAllItems();
+        });
+        minPercentLabel.appendChild(minPercentInput);
+        container.appendChild(minPercentLabel);
+
+        wrapper.appendChild(container);
     }
 
     function handleItemInfo(infoLi) {
@@ -199,9 +249,9 @@
                     node.querySelectorAll('li[class*="itemInfoWrapper"]').forEach(handleItemInfo);
                 }
 
-                // Re-inject checkbox if filtersWrapper appears
+                // Re-inject filters if filtersWrapper appears
                 if (node.matches('div[class^="filtersWrapper___"]') || node.querySelector('div[class^="filtersWrapper___"]')) {
-                    injectCheckbox();
+                    injectFilters();
                 }
             });
         });
@@ -210,7 +260,7 @@
     observer.observe(document.body, { childList: true, subtree: true });
 
     // Initial run
-    injectCheckbox();
+    injectFilters();
     filterAllItems();
 
 })();
