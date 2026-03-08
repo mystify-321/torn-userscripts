@@ -1,0 +1,216 @@
+// ==UserScript==
+// @name         Torn Hide the non profitable
+// @namespace    http://tampermonkey.net/
+// @version      2026-03-07
+// @description  Hide all the things that are not sellable with a profit
+// @author       You
+// @match        https://www.torn.com/page.php?sid=ItemMarket*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_addStyle
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    GM_addStyle(`
+        .tt-hidden { display: none !important; }
+        .tt-no-price { background-color: rgba(255, 0, 0, 0.2) !important; }
+    `);
+
+    const STORAGE_KEY_HIDE = 'market_filter_hide_without_profit';
+    const STORAGE_KEY_PRICES = 'market_item_sell_prices';
+
+    let hideWithoutProfit = GM_getValue(STORAGE_KEY_HIDE, false);
+    let sellPrices = JSON.parse(GM_getValue(STORAGE_KEY_PRICES, '{}'));
+
+    function saveSellPrice(itemId, price) {
+        if (sellPrices[itemId] === price) return;
+        sellPrices[itemId] = price;
+        GM_setValue(STORAGE_KEY_PRICES, JSON.stringify(sellPrices));
+        filterAllItemsWithId(itemId);
+        console.log('Saved sell price for item', itemId, price);
+    }
+
+    function getItemIdFromSrc(src) {
+        //console.log('getItemIdFromSrc', src);
+        const match = src.match(/\/items\/(\d+)\//);
+        return match ? match[1] : null;
+    }
+
+    function parsePrice(priceStr) {
+        return parseInt(priceStr.replace(/[$,]/g, ''), 10);
+    }
+
+    function filterLi(li) {
+        if (li.matches('[class*="itemInfoWrapper"]')) return;
+
+        const img = li.querySelector('img.torn-item');
+        if (!img) return;
+
+        const itemId = getItemIdFromSrc(img.getAttribute('src'));
+        if (!itemId) return;
+
+        const priceWrapper = li.querySelector('[class^="priceAndTotal___"] span');
+        if (!priceWrapper) return;
+
+        const marketPrice = parsePrice(priceWrapper.textContent);
+        const sellPrice = sellPrices[itemId];
+
+        if (sellPrice === undefined) {
+            li.classList.add('tt-no-price');
+            li.classList.remove('tt-hidden');
+        } else {
+            li.classList.remove('tt-no-price');
+            if (hideWithoutProfit && marketPrice >= sellPrice) {
+                li.classList.add('tt-hidden');
+            } else {
+                li.classList.remove('tt-hidden');
+            }
+        }
+    }
+
+    function filterAllItemsWithId(itemId) {
+        document.querySelectorAll('ul[class^="itemList___"] li').forEach(li => {
+            const img = li.querySelector('img.torn-item');
+            if (img && getItemIdFromSrc(img.getAttribute('src')) === itemId) {
+                filterLi(li);
+            }
+        });
+    }
+
+    function filterAllItems() {
+        document.querySelectorAll('ul[class^="itemList___"] li').forEach(filterLi);
+    }
+
+    function injectCheckbox() {
+        const wrapper = document.querySelector('div[class^="filtersWrapper___"]');
+        if (!wrapper || wrapper.querySelector('#tt-hide-no-profit-checkbox')) return;
+
+        const label = document.createElement('label');
+        label.style.marginLeft = '10px';
+        label.style.display = 'inline-flex';
+        label.style.alignItems = 'center';
+        label.style.cursor = 'pointer';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = 'tt-hide-no-profit-checkbox';
+        checkbox.checked = hideWithoutProfit;
+        checkbox.style.marginRight = '5px';
+
+        checkbox.addEventListener('change', (e) => {
+            hideWithoutProfit = e.target.checked;
+            GM_setValue(STORAGE_KEY_HIDE, hideWithoutProfit);
+            filterAllItems();
+        });
+
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode('Hide without profit'));
+        wrapper.appendChild(label);
+    }
+
+    function handleItemInfo(infoLi) {
+        console.log('handleItemInfo', infoLi);
+        infoLi.childNodes.forEach(node => {
+            console.log('node', node);
+        })
+        const divWithItemId = infoLi.querySelector('div[class*="item-info"]'); //id="wai-itemInfo-487-16652481851"
+        if (!divWithItemId) {
+            console.log('No div with item ID found');
+            return;
+        }
+        console.log('divWithItemId', divWithItemId);
+        if (!divWithItemId.id) {
+            console.log('No div with item ID found');
+            return;
+        }
+        const itemIdArr = divWithItemId.id.match(/itemInfo-(\d+)-\d+/);
+        if (!itemIdArr) {
+            console.log('Invalid item ID format');
+            return;
+        }
+        const itemId = itemIdArr[1];
+        if (!itemId) {
+            console.log('No item ID found');
+            return;
+        }
+        console.log('itemId', itemId);
+
+        // If we already have the price, we might still want to check if it's there to be sure
+        // But the requirement says: "find the item id, if the sale price is already stored, ignore it"
+        if (sellPrices[itemId] !== undefined) return;
+
+        console.log('Sell price already known for item', itemId);
+
+        // Find "Sell:" price
+        const properties = infoLi.querySelectorAll('li[class^="propertyWrapper___"]');
+        for (const prop of properties) {
+            const title = prop.querySelector('[class^="title___"]');
+            if (title && title.textContent.trim() === 'Sell:') {
+                const valueSpan = prop.querySelector('[class^="valueWrapper___"] span span[aria-hidden="true"]');
+                if (valueSpan) {
+                    if (valueSpan.textContent === 'N/A'){
+                        saveSellPrice(itemId, 0);
+                        continue
+                    }
+                    const price = parsePrice(valueSpan.textContent);
+                    if (!isNaN(price)) {
+                        console.log('Found sell price for item', itemId, price);
+                        saveSellPrice(itemId, price);
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+                if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+                // Check for itemList
+                if (node.matches('li') && node.closest('ul[class^="itemList___"]')) {
+                    filterLi(node);
+                } else {
+                    node.querySelectorAll('li').forEach(li => {
+                        if (li.closest('ul[class^="itemList___"]')) {
+                            filterLi(li);
+                        }
+                    });
+                }
+
+                // Check for itemInfoWrapper
+                // The description says "Ignore <li> with the class itemInfoWrapper" for filtering,
+                // but we use it to get the price.
+                if (node.matches('li[class*="itemInfoWrapper"]')) {
+                    //console.log('handleItemInfoWrapper_1', node);
+                    handleItemInfo(node);
+                } else if (node.matches('div[class^="item-info"]')) {
+                    const itemInfoWrapper = node.closest('li[class^="itemInfoWrapper"]');
+                    if (itemInfoWrapper) {
+                        //console.log('handleItemInfoWrapper_2', node);
+                        handleItemInfo(itemInfoWrapper);
+                    }
+                } else {
+                    //console.log('handleItemInfoWrapper_3', node);
+                    node.querySelectorAll('li[class*="itemInfoWrapper"]').forEach(handleItemInfo);
+                }
+
+                // Re-inject checkbox if filtersWrapper appears
+                if (node.matches('div[class^="filtersWrapper___"]') || node.querySelector('div[class^="filtersWrapper___"]')) {
+                    injectCheckbox();
+                }
+            });
+        });
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Initial run
+    injectCheckbox();
+    filterAllItems();
+
+})();

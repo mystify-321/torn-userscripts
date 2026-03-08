@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Torn tools mugger addon
+// @description  A set to filters made for muggers in the game Torn. Which allow you to pick targets fast and efficiently
 // @namespace    http://tampermonkey.net/
-// @version      2026-03-07
-// @description  Torn tools mugger addon
+// @version      2026-03-08
 // @author       You
 // @match        https://www.torn.com/index.php*
 // @match        https://www.torn.com/page.php*
@@ -209,7 +209,15 @@
             const filterBtn = document.createElement('button');
             filterBtn.textContent = 'Filter';
             filterBtn.style.cssText = 'padding: 6px 12px; background: #2d7d46; color: white; border: none; border-radius: 3px; cursor: pointer; font-weight: bold;';
-            filterBtn.onclick = () => applyFilters(filterContainer.closest('.userlist-wrapper'));
+            filterBtn.onclick = () => {
+                const userListWrapper = filterContainer.closest('.userlist-wrapper');
+                if(userListWrapper) {
+                    applyFilters(userListWrapper)
+                }else {
+                    const travelPeopleWrapper = filterContainer.closest('.travel-people');
+                    if(travelPeopleWrapper) applyFilters(travelPeopleWrapper)
+                }
+            };
             content.appendChild(filterBtn);
 
             return filterContainer;
@@ -224,11 +232,17 @@
             const maxLastAction = parseFloat(GM_getValue(FILTER_KEYS.MAX_LAST_ACTION, 999999)) || 999999;
 
             const nowTimestamp = Math.floor(Date.now() / 1000);
-            const listWrap = wrapper.querySelector('.user-info-list-wrap');
-            if (!listWrap) return;
+            let listWrap = wrapper.querySelector('ul.user-info-list-wrap');
+            if (!listWrap) {
+                listWrap = wrapper.querySelector('ul.users-list');
+                if (!listWrap) return;
+            }
+            console.log('nw - applyFilters - user-info-list-wrap', listWrap);
 
-            const listItems = listWrap.querySelectorAll('li[class*="user"]');
+            const listItems = listWrap.querySelectorAll('li');
+            console.log('nw - applyFilters - listItems', listItems.length);
             listItems.forEach(li => {
+                if(li.closest('ul#iconTray')) return;
                 const ttHidden = li.dataset.hideReason !== undefined;
                 if (ttHidden && li.classList.contains('tt-hidden')) return;
 
@@ -256,7 +270,12 @@
         }
 
         function injectFilterAreaIfNeeded(node) {
-            const wrapper = node.closest ? node.closest('.userlist-wrapper') : null;
+            let wrapper = node.closest ? node.closest('.userlist-wrapper') : null;
+            if (wrapper && !wrapper.querySelector('.mugger-filter-area')) {
+                const filterArea = createFilterArea();
+                wrapper.prepend(filterArea);
+            }
+            wrapper = node.closest ? node.closest('.travel-people') : null;
             if (wrapper && !wrapper.querySelector('.mugger-filter-area')) {
                 const filterArea = createFilterArea();
                 wrapper.prepend(filterArea);
