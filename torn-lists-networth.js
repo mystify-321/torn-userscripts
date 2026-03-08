@@ -2,7 +2,7 @@
 // @name         Torn tools mugger addon
 // @description  A set to filters made for muggers in the game Torn. Which allow you to pick targets fast and efficiently
 // @namespace    http://tampermonkey.net/
-// @version      2026-03-08
+// @version      2026-03-08_02
 // @author       You
 // @match        https://www.torn.com/index.php*
 // @match        https://www.torn.com/page.php*
@@ -21,6 +21,8 @@
 
     const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const CACHE_KEY_PREFIX = 'torn_networth_';
+
+/*
     const staggerRequestTimeoutMs = 100;
     let staggeredRequestTimeEpoch = Date.now();
 
@@ -40,7 +42,7 @@
         if (time == null) return Promise.resolve();
         return new Promise(resolve => setTimeout(resolve, time));
     }
-
+*/
     function showTokenModal(onSave) {
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:999999;font-family:system-ui,sans-serif;';
@@ -133,7 +135,7 @@
         }
 
         async function getNetworth(userId) {
-            await awaitStaggeredRequestTime();
+            //await awaitStaggeredRequestTime();
             const cached = getNetworthCache(userId);
             if (cached != null) return cached;
             try {
