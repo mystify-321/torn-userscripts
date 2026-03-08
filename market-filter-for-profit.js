@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Hide the non profitable
 // @namespace    http://tampermonkey.net/
-// @version      2026-03-08_01
+// @version      2026-03-08_02
 // @description  Hide all the things that are not sellable with a profit
 // @author       You
 // @match        https://www.torn.com/page.php?sid=ItemMarket*
@@ -16,8 +16,9 @@
     'use strict';
 
     GM_addStyle(`
-        .tt-hidden { display: none !important; }
-        .tt-no-price { background-color: rgba(255, 0, 0, 0.2) !important; }
+        .jensim-hidden { display: none !important; }
+        .jensim-no-price { background-color: rgba(195, 35, 35, 0.2) !important; }
+        .jensim-bad-price { background-color: rgba(255, 0, 0, 0.2) !important; }
     `);
 
     const STORAGE_KEY_HIDE = 'market_filter_hide_without_profit';
@@ -64,16 +65,20 @@
         const sellPrice = sellPrices[itemId];
 
         if (sellPrice === undefined) {
-            li.classList.add('tt-no-price');
-            li.classList.remove('tt-hidden');
+            li.classList.add('jensim-no-price');
+            li.classList.remove('jensim-hidden');
         } else {
-            li.classList.remove('tt-no-price');
+            li.classList.remove('jensim-no-price');
             const profit = sellPrice - marketPrice;
             const profitPercent = (profit / marketPrice) * 100;
+            const buyButton = li.querySelectorAll('button[class^="buyButton___"]')[1];
             if (hideWithoutProfit && (profit < minAmountProfit || profitPercent < minPercentProfit)) {
-                li.classList.add('tt-hidden');
+                li.classList.add('jensim-bad-price');
+                buyButton.classList.add('jensim-hidden');
             } else {
-                li.classList.remove('tt-hidden');
+                console.log('Item', itemId, 'profit', profit, 'profitPercent', profitPercent, 'marketPrice', marketPrice, 'sellPrice', sellPrice);
+                li.classList.remove('jensim-bad-price');
+                buyButton.classList.remove('jensim-hidden');
             }
         }
     }

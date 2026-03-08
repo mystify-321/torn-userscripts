@@ -306,7 +306,6 @@
         function scanArrows(root) {
             if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
             const arrows = root.querySelectorAll('img[src*="green-arrow.svg"], img[src*="blue-arrow.svg"]');
-            console.log('nw - scanArrows', arrows);
             for (const arrow of arrows) {
                 handleAddedArrow(arrow);
             }
