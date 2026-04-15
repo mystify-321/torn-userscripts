@@ -255,7 +255,7 @@
 
     function scanForHonorWraps(root) {
         if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
-        const anchors = root.querySelectorAll('a.user.name[href*="profiles.php?XID="]');
+        const anchors = root.querySelectorAll('a[href^="/profiles.php?XID="]');
         for (const a of anchors) {
             const match = (a.getAttribute('href') || '').match(/XID=(\d+)/);
             if (!match) continue;
