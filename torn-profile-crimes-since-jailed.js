@@ -46,43 +46,20 @@
             return { crimes: offensesNow, neverJailed: true };
         }
 
-        onStatus('Fetching jailed count 6 months ago...');
-        const ts6m = nowTs - 6 * MONTH_SECONDS;
-        const jailed6m = await fetchStat(userId, 'jailed', ts6m, apiKey);
-
+        // 1-month steps up to 6, then every 2 months up to 12
+        const steps = [1, 2, 3, 4, 5, 6, 8, 10, 12];
         let lastJailedTs = null;
         let lastJailedMonths = null;
 
-        if (jailed6m !== jailedNow) {
-            // Changed within the past 6 months — step back 1 month at a time from now
-            for (let m = 1; m <= 6; m++) {
-                const stepTs = nowTs - m * MONTH_SECONDS;
-                onStatus(`Checking jailed count ${m} month(s) ago...`);
-                const jailedAt = await fetchStat(userId, 'jailed', stepTs, apiKey);
-                if (jailedAt < jailedNow) {
-                    lastJailedTs = stepTs;
-                    lastJailedMonths = m - 1;
-                    break;
-                }
+        for (const m of steps) {
+            const stepTs = nowTs - m * MONTH_SECONDS;
+            onStatus(`Checking jailed count ${m} month(s) ago...`);
+            const jailedAt = await fetchStat(userId, 'jailed', stepTs, apiKey);
+            if (jailedAt < jailedNow) {
+                lastJailedTs = stepTs;
+                lastJailedMonths = m - 1;
+                break;
             }
-        } else {
-            // No change in 6 months — step back 2 months at a time starting from 8 months
-            for (let m = 8; m <= 120; m += 2) {
-                const stepTs = nowTs - m * MONTH_SECONDS;
-                onStatus(`Checking jailed count ${m} month(s) ago...`);
-                const jailedAt = await fetchStat(userId, 'jailed', stepTs, apiKey);
-                if (jailedAt < jailedNow) {
-                    lastJailedTs = stepTs;
-                    lastJailedMonths = m - 1;
-                    break;
-                }
-            }
-        }
-
-        if (lastJailedTs === null) {
-            onStatus('Could not determine last jail time. Showing total offenses.');
-            const offensesNow = await fetchStat(userId, 'criminaloffenses', nowTs, apiKey);
-            return { crimes: offensesNow, couldNotFind: true };
         }
 
         if (lastJailedMonths === 0) {
@@ -90,12 +67,17 @@
             return { crimes: 0, monthsAgo: 0 };
         }
 
+        const offsetTs = lastJailedTs ?? (nowTs - 12 * MONTH_SECONDS);
         onStatus('Fetching criminal offenses at time of last jail...');
-        const offensesAtJail = await fetchStat(userId, 'criminaloffenses', lastJailedTs, apiKey);
+        const offensesAtJail = await fetchStat(userId, 'criminaloffenses', offsetTs, apiKey);
         onStatus('Fetching current criminal offenses...');
         const offensesNow = await fetchStat(userId, 'criminaloffenses', nowTs, apiKey);
 
-        return { crimes: offensesNow - offensesAtJail, monthsAgo: lastJailedMonths };
+        return {
+            crimes: offensesNow - offensesAtJail,
+            monthsAgo: lastJailedMonths,
+            moreThanAYear: lastJailedTs === null,
+        };
     }
 
     function bindEscToClose(overlay) {
@@ -183,14 +165,45 @@
         statusEl.textContent = 'Starting...';
 
         const closeRow = document.createElement('div');
-        closeRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:16px;';
+        closeRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:16px;';
+
+        const linkStyle = 'font-size:13px;color:#7ab;text-decoration:none;margin-right:10px;';
+
+        const linksLeft = document.createElement('div');
+
+        const statsLink = document.createElement('a');
+        statsLink.textContent = 'Stats';
+        statsLink.href = `https://www.torn.com/personalstats.php?ID=${userId}&stats=criminaloffenses,jailed&from=6%20months`;
+        statsLink.target = '_blank';
+        statsLink.rel = 'noopener noreferrer';
+        statsLink.style.cssText = linkStyle;
+        linksLeft.append(statsLink);
+
+        if (getProfileUserId() !== userId) {
+            const profileLink = document.createElement('a');
+            profileLink.textContent = 'Profile';
+            profileLink.href = `https://www.torn.com/profiles.php?XID=${userId}`;
+            profileLink.target = '_blank';
+            profileLink.rel = 'noopener noreferrer';
+            profileLink.style.cssText = linkStyle;
+            linksLeft.append(profileLink);
+
+        }
+
+        const attackLink = document.createElement('a');
+        attackLink.textContent = 'Attack';
+        attackLink.href = `https://www.torn.com/loader.php?sid=attack&user2ID=${userId}`;
+        attackLink.target = '_blank';
+        attackLink.rel = 'noopener noreferrer';
+        attackLink.style.cssText = linkStyle;
+        linksLeft.append(attackLink);
 
         const closeBtn = document.createElement('button');
         closeBtn.textContent = 'Close';
         closeBtn.style.cssText = 'padding:8px 16px;border:1px solid #555;border-radius:6px;background:transparent;color:#ccc;cursor:pointer;font-size:14px;';
         closeBtn.addEventListener('click', () => overlay.remove());
 
-        closeRow.append(closeBtn);
+        closeRow.append(linksLeft, closeBtn);
         box.append(titleRow, statusEl, closeRow);
         overlay.append(box);
         document.body.appendChild(overlay);
@@ -206,8 +219,8 @@
                 const result = await computeCrimesSinceLastJailed(userId, apiKey, appendStatus);
                 if (result.neverJailed) {
                     appendStatus(`ca ${result.crimes} crimes committed since last time jailed`);
-                } else if (result.couldNotFind) {
-                    appendStatus(`ca ${result.crimes} crimes committed since last time jailed`);
+                } else if (result.moreThanAYear) {
+                    appendStatus(`ca ${result.crimes} crimes committed since last time jailed more than a year ago`);
                 } else {
                     appendStatus(`ca ${result.crimes} crimes committed since last time jailed ${result.monthsAgo} months ago`);
                 }
