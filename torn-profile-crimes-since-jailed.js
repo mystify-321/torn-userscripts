@@ -1,14 +1,16 @@
 // ==UserScript==
 // @name         Torn profile crimes since last jailed
 // @namespace    http://tampermonkey.net/
-// @version      2026-04-15_01
+// @version      2026-04-15_05
 // @description  Adds a "Fetch crimes" button on Torn profile pages showing crimes committed since last time jailed
-// @author       You
+// @author       mystify-321
 // @match        https://www.torn.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @license      MIT
+// @downloadURL https://update.greasyfork.org/scripts/574010/Torn%20profile%20crimes%20since%20last%20jailed.user.js
+// @updateURL https://update.greasyfork.org/scripts/574010/Torn%20profile%20crimes%20since%20last%20jailed.meta.js
 // ==/UserScript==
 
 // Set PUBLIC_ACCESS_TOKEN in Tampermonkey: Dashboard → this script → Storage (key: PUBLIC_ACCESS_TOKEN).
@@ -150,6 +152,25 @@
         title.textContent = 'Crimes since last jailed';
         title.style.cssText = 'font-weight:bold;font-size:16px;';
 
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:6px;align-items:center;';
+
+        const loadBtn = document.createElement('button');
+        loadBtn.textContent = 'Load';
+        loadBtn.style.cssText = 'padding:4px 10px;border:1px solid #555;border-radius:6px;background:transparent;color:#aaa;cursor:pointer;font-size:12px;';
+        btnRow.append(loadBtn);
+
+        if (!getProfileUserId()) {
+            const loadAllBtn = document.createElement('button');
+            loadAllBtn.textContent = 'Load all';
+            loadAllBtn.style.cssText = 'padding:4px 10px;border:1px solid #555;border-radius:6px;background:transparent;color:#aaa;cursor:pointer;font-size:12px;';
+            loadAllBtn.addEventListener('click', () => {
+                overlay.remove();
+                loadAllCrimes(apiKey);
+            });
+            btnRow.append(loadAllBtn);
+        }
+
         const changeKeyBtn = document.createElement('button');
         changeKeyBtn.textContent = 'Change API key';
         changeKeyBtn.style.cssText = 'padding:4px 10px;border:1px solid #555;border-radius:6px;background:transparent;color:#aaa;cursor:pointer;font-size:12px;';
@@ -158,11 +179,12 @@
             showApiKeyModal(GM_getValue('PUBLIC_ACCESS_TOKEN', ''), (newKey) => openCrimesModal(userId, newKey), null);
         });
 
-        titleRow.append(title, changeKeyBtn);
+        btnRow.append(changeKeyBtn);
+        titleRow.append(title, btnRow);
 
         const statusEl = document.createElement('div');
         statusEl.style.cssText = 'font-size:14px;color:#ccc;min-height:60px;max-height:260px;overflow-y:auto;padding:12px;background:#111;border-radius:6px;line-height:1.5;white-space:pre-wrap;font-family:monospace;';
-        statusEl.textContent = 'Starting...';
+        statusEl.textContent = 'Ready.';
 
         const closeRow = document.createElement('div');
         closeRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:16px;';
@@ -214,32 +236,40 @@
             statusEl.scrollTop = statusEl.scrollHeight;
         }
 
-        (async () => {
-            try {
-                const result = await computeCrimesSinceLastJailed(userId, apiKey, appendStatus);
-                if (result.neverJailed) {
-                    appendStatus(`ca ${result.crimes} crimes committed since last time jailed`);
-                } else if (result.moreThanAYear) {
-                    appendStatus(`ca ${result.crimes} crimes committed since last time jailed more than a year ago`);
-                } else {
-                    appendStatus(`ca ${result.crimes} crimes committed since last time jailed ${result.monthsAgo} months ago`);
+        function startLoad() {
+            loadBtn.disabled = true;
+            statusEl.textContent = 'Starting...';
+            (async () => {
+                try {
+                    const result = await computeCrimesSinceLastJailed(userId, apiKey, appendStatus);
+                    if (result.neverJailed) {
+                        appendStatus(`ca ${result.crimes} crimes committed since last time jailed`);
+                    } else if (result.moreThanAYear) {
+                        appendStatus(`ca ${result.crimes} crimes committed since last time jailed more than a year ago`);
+                    } else {
+                        appendStatus(`ca ${result.crimes} crimes committed since last time jailed ${result.monthsAgo} months ago`);
+                    }
+                } catch (err) {
+                    appendStatus(`Error: ${err.message}`);
+                    loadBtn.disabled = false;
                 }
-            } catch (err) {
-                appendStatus(`Error: ${err.message}`);
-            }
-        })();
+            })();
+        }
+
+        loadBtn.addEventListener('click', startLoad);
     }
 
     function injectCrimesIcon(honorWrap, userId) {
-        if (honorWrap.querySelector('.tc-crimes-icon')) return;
+        if (honorWrap.querySelector('.tc-crimes-icon') || honorWrap.querySelector('.tc-crimes-result')) return;
         if (getComputedStyle(honorWrap).position === 'static') {
             honorWrap.style.position = 'relative';
         }
         const icon = document.createElement('button');
         icon.className = 'tc-crimes-icon';
+        icon.dataset.userId = userId;
         icon.textContent = '🫆';
         icon.title = 'Fetch crimes since last jailed';
-        icon.style.cssText = 'position:absolute;right:0;top:0;z-index:1000;background:rgba(255,255,255,0.5);border:none;padding:1px 2px;margin:0;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;';
+        icon.style.cssText = 'position:absolute;right:50;top:0;z-index:999;background:rgba(255,255,255,0.5);border:none;padding:1px 2px;margin:0;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;';
         icon.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -251,6 +281,57 @@
             }
         });
         honorWrap.appendChild(icon);
+    }
+
+    function replaceIconWithResult(icon, crimes, statusLog) {
+        const span = document.createElement('span');
+        span.className = 'tc-crimes-result';
+        span.style.cssText = 'position:absolute;right:0;top:0;z-index:1000;background:rgba(255,255,255,0.5);padding:1px 2px;margin:0;font-size:10px;line-height:1;border-radius:2px;cursor:default;color:#000;font-weight:bold;';
+        span.textContent = String(crimes);
+        span.title = statusLog;
+        icon.replaceWith(span);
+    }
+
+    async function loadAllCrimes(apiKey) {
+        const icons = Array.from(document.querySelectorAll('.tc-crimes-icon'));
+        for (const icon of icons) {
+            const userId = icon.dataset.userId;
+            if (!userId || icon.dataset.loading) continue;
+            icon.dataset.loading = '1';
+
+            const statusLines = [];
+            const onStatus = (msg) => {
+                statusLines.push(msg);
+                icon.title = statusLines.join('\n');
+            };
+
+            icon.textContent = '⏳';
+            icon.disabled = true;
+
+            try {
+                const result = await computeCrimesSinceLastJailed(userId, apiKey, onStatus);
+
+                let summary;
+                if (result.neverJailed) {
+                    summary = `${result.crimes} crimes (never jailed)`;
+                } else if (result.moreThanAYear) {
+                    summary = `${result.crimes} crimes (jailed >1yr ago)`;
+                } else if (result.monthsAgo === 0) {
+                    summary = `0 crimes (jailed <1mo ago)`;
+                } else {
+                    summary = `${result.crimes} crimes (jailed ${result.monthsAgo}mo ago)`;
+                }
+
+                const fullLog = statusLines.join('\n') + '\n\n' + summary;
+                replaceIconWithResult(icon, result.crimes, fullLog);
+            } catch (err) {
+                statusLines.push(`Error: ${err.message}`);
+                icon.textContent = '❌';
+                icon.title = statusLines.join('\n');
+                icon.disabled = false;
+                delete icon.dataset.loading;
+            }
+        }
     }
 
     function scanForHonorWraps(root) {
