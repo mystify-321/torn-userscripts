@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn profile crimes since last jailed
 // @namespace    http://tampermonkey.net/
-// @version      2026-04-15_05
+// @version      2026-05-25_01
 // @description  Adds a "Fetch crimes" button on Torn profile pages showing crimes committed since last time jailed
 // @author       mystify-321
 // @match        https://www.torn.com/*
@@ -259,17 +259,15 @@
         loadBtn.addEventListener('click', startLoad);
     }
 
-    function injectCrimesIcon(honorWrap, userId) {
-        if (honorWrap.querySelector('.tc-crimes-icon') || honorWrap.querySelector('.tc-crimes-result')) return;
-        if (getComputedStyle(honorWrap).position === 'static') {
-            honorWrap.style.position = 'relative';
-        }
+    function injectCrimesIcon(anchor, userId) {
+        const next = anchor.nextElementSibling;
+        if (next && (next.classList.contains('tc-crimes-icon') || next.classList.contains('tc-crimes-result'))) return;
         const icon = document.createElement('button');
         icon.className = 'tc-crimes-icon';
         icon.dataset.userId = userId;
         icon.textContent = '🫆';
         icon.title = 'Fetch crimes since last jailed';
-        icon.style.cssText = 'position:absolute;right:50;top:0;z-index:999;background:rgba(255,255,255,0.5);border:none;padding:1px 2px;margin:0;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;';
+        icon.style.cssText = 'background:rgba(255,255,255,0.5);border:none;padding:1px 2px;margin-left:4px;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;vertical-align:middle;';
         icon.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -280,13 +278,13 @@
                 openCrimesModal(userId, apiKey);
             }
         });
-        honorWrap.appendChild(icon);
+        anchor.insertAdjacentElement('afterend', icon);
     }
 
     function replaceIconWithResult(icon, crimes, statusLog) {
         const span = document.createElement('span');
         span.className = 'tc-crimes-result';
-        span.style.cssText = 'position:absolute;right:0;top:0;z-index:1000;background:rgba(255,255,255,0.5);padding:1px 2px;margin:0;font-size:10px;line-height:1;border-radius:2px;cursor:default;color:#000;font-weight:bold;';
+        span.style.cssText = 'background:rgba(255,255,255,0.5);padding:1px 2px;margin-left:4px;font-size:10px;line-height:1;border-radius:2px;cursor:default;color:#000;font-weight:bold;vertical-align:middle;';
         span.textContent = String(crimes);
         span.title = statusLog;
         icon.replaceWith(span);
@@ -341,7 +339,7 @@
             const match = (a.getAttribute('href') || '').match(/XID=(\d+)/);
             if (!match) continue;
             const honorWrap = a.querySelector('.honor-text-wrap');
-            if (honorWrap) injectCrimesIcon(honorWrap, match[1]);
+            if (honorWrap) injectCrimesIcon(a, match[1]);
         }
     }
 
