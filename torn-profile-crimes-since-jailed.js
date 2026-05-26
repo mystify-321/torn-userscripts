@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn profile crimes since last jailed
 // @namespace    http://tampermonkey.net/
-// @version      2026-05-25_01
+// @version      2026-05-26_01
 // @description  Adds a "Fetch crimes" button on Torn profile pages showing crimes committed since last time jailed
 // @author       mystify-321
 // @match        https://www.torn.com/*
@@ -281,6 +281,42 @@
         anchor.insertAdjacentElement('afterend', icon);
     }
 
+    function injectMiniProfileButton(wrapper, userId) {
+        const buttonWrap = wrapper.querySelector('.button-wrap');
+        if (!buttonWrap || buttonWrap.querySelector('.tc-mini-crimes-btn')) return;
+        const btn = document.createElement('span');
+        btn.className = 'profile-button tc-mini-crimes-btn';
+        const icon = document.createElement('span');
+        icon.style.fontSize = '20px';
+        icon.textContent = '🫆';
+        btn.appendChild(icon);
+        btn.style.cursor = 'pointer';
+        btn.title = 'Fetch crimes since last jailed';
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const apiKey = GM_getValue('PUBLIC_ACCESS_TOKEN', '');
+            if (!apiKey) {
+                showApiKeyModal('', (key) => openCrimesModal(userId, key), null);
+            } else {
+                openCrimesModal(userId, apiKey);
+            }
+        });
+        buttonWrap.appendChild(btn);
+    }
+
+    function scanForMiniProfiles(root) {
+        if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
+        const wrappers = root.querySelectorAll('[class*="profile-mini-_wrapper___"]');
+        for (const wrapper of wrappers) {
+            const link = wrapper.querySelector('a[href*="XID="]');
+            if (!link) continue;
+            const match = (link.getAttribute('href') || '').match(/XID=(\d+)/);
+            if (!match) continue;
+            injectMiniProfileButton(wrapper, match[1]);
+        }
+    }
+
     function replaceIconWithResult(icon, crimes, statusLog) {
         const span = document.createElement('span');
         span.className = 'tc-crimes-result';
@@ -368,11 +404,13 @@
     function init() {
         injectButton();
         scanForHonorWraps(document.body);
+        scanForMiniProfiles(document.body);
         const observer = new MutationObserver((mutations) => {
             injectButton();
             for (const mut of mutations) {
                 for (const node of mut.addedNodes) {
                     scanForHonorWraps(node);
+                    scanForMiniProfiles(node);
                 }
             }
         });
