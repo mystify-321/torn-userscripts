@@ -8,6 +8,8 @@
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM.xmlHttpRequest
+// @connect      api.torn.com
 // @license      MIT
 // @downloadURL https://update.greasyfork.org/scripts/574010/Torn%20profile%20crimes%20since%20last%20jailed.user.js
 // @updateURL https://update.greasyfork.org/scripts/574010/Torn%20profile%20crimes%20since%20last%20jailed.meta.js
@@ -21,6 +23,19 @@
 
     const MONTH_SECONDS = 30 * 24 * 3600;
 
+    function gmGet(url, headers) {
+        return new Promise((resolve, reject) => {
+            GM.xmlHttpRequest({
+                method: 'GET',
+                url,
+                headers,
+                onload: (r) => resolve(r),
+                onerror: () => reject(new Error('Network error')),
+                ontimeout: () => reject(new Error('Request timed out')),
+            });
+        });
+    }
+
     function getProfileUserId() {
         const url = new URL(window.location.href);
         return url.searchParams.get('XID');
@@ -29,9 +44,9 @@
     async function fetchStat(userId, stat, timestamp, apiKey) {
         let url = `https://api.torn.com/v2/user/${userId}/personalstats?stat=${stat}`;
         if (timestamp != null) url += `&timestamp=${timestamp}`;
-        const res = await fetch(url, { headers: { Authorization: `ApiKey ${apiKey}` } });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const res = await gmGet(url, { Authorization: `ApiKey ${apiKey}` });
+        if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
+        const data = JSON.parse(res.responseText);
         if (data.error) throw new Error(data.error.error || 'API error');
         return data?.personalstats?.[0]?.value ?? 0;
     }
@@ -260,14 +275,20 @@
     }
 
     function injectCrimesIcon(anchor, userId) {
-        const next = anchor.nextElementSibling;
-        if (next && (next.classList.contains('tc-crimes-icon') || next.classList.contains('tc-crimes-result'))) return;
+		console.log('injectCrimesIcon')
+        const honorWrap = anchor.querySelector('.honor-text-wrap');
+        if (!honorWrap) return;
+        if (honorWrap.querySelector('.tc-crimes-icon, .tc-crimes-result')) {
+			console.log('injectCrimesIcon early return')
+			return;
+		}
+        honorWrap.style.position = 'relative';
         const icon = document.createElement('button');
         icon.className = 'tc-crimes-icon';
         icon.dataset.userId = userId;
-        icon.textContent = '🫆';
+        icon.textContent = '🔍';
         icon.title = 'Fetch crimes since last jailed';
-        icon.style.cssText = 'background:rgba(255,255,255,0.5);border:none;padding:1px 2px;margin-left:4px;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;vertical-align:middle;';
+        icon.style.cssText = 'position:absolute;right:2px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);border:none;padding:1px 2px;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;';
         icon.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -278,17 +299,22 @@
                 openCrimesModal(userId, apiKey);
             }
         });
-        anchor.insertAdjacentElement('afterend', icon);
+        honorWrap.appendChild(icon);
     }
 
     function injectMiniProfileButton(wrapper, userId) {
-        const buttonWrap = wrapper.querySelector('.button-wrap');
-        if (!buttonWrap || buttonWrap.querySelector('.tc-mini-crimes-btn')) return;
+		try {
+		console.log('injectMiniProfileButton')
+        const buttonWrap = wrapper.querySelector('.buttons-wrap');
+        if (!buttonWrap || buttonWrap.querySelector('.tc-mini-crimes-btn')) {
+			//console.log('injectMiniProfileButton early return');
+			return;
+		}
         const btn = document.createElement('span');
         btn.className = 'profile-button tc-mini-crimes-btn';
         const icon = document.createElement('span');
         icon.style.fontSize = '20px';
-        icon.textContent = '🫆';
+        icon.textContent = '🔍';
         btn.appendChild(icon);
         btn.style.cursor = 'pointer';
         btn.title = 'Fetch crimes since last jailed';
@@ -303,16 +329,26 @@
             }
         });
         buttonWrap.appendChild(btn);
+		console.log('injectMiniProfileButton done')
+		}catch(e){
+			console.err('Failed injectMiniProfileButton',e);
+		}
     }
 
     function scanForMiniProfiles(root) {
-        if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
-        const wrappers = root.querySelectorAll('[class*="profile-mini-_wrapper___"]');
-        for (const wrapper of wrappers) {
+        const wrappers = document.querySelectorAll('[class*="profile-mini-_wrapper___"]');
+        //console.log('scanForMiniProfiles found '+wrappers.length+' wrappers');
+		for (const wrapper of wrappers) {
             const link = wrapper.querySelector('a[href*="XID="]');
-            if (!link) continue;
+            if (!link) {
+				console.log('no profile link found in wrapper');
+				continue;
+			}
             const match = (link.getAttribute('href') || '').match(/XID=(\d+)/);
-            if (!match) continue;
+            if (!match) {
+				console.log('no profile link match found in link');
+				continue;
+			}
             injectMiniProfileButton(wrapper, match[1]);
         }
     }
@@ -320,7 +356,7 @@
     function replaceIconWithResult(icon, crimes, statusLog) {
         const span = document.createElement('span');
         span.className = 'tc-crimes-result';
-        span.style.cssText = 'background:rgba(255,255,255,0.5);padding:1px 2px;margin-left:4px;font-size:10px;line-height:1;border-radius:2px;cursor:default;color:#000;font-weight:bold;vertical-align:middle;';
+        span.style.cssText = 'position:absolute;right:2px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);padding:1px 2px;font-size:10px;line-height:1;border-radius:2px;cursor:default;color:#000;font-weight:bold;';
         span.textContent = String(crimes);
         span.title = statusLog;
         icon.replaceWith(span);
