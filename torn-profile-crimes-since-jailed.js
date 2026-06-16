@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn profile crimes since last jailed
 // @namespace    http://tampermonkey.net/
-// @version      2026-05-26_01
+// @version      2026-06-16_01
 // @description  Adds a "Fetch crimes" button on Torn profile pages showing crimes committed since last time jailed
 // @author       mystify-321
 // @match        https://www.torn.com/*
@@ -22,6 +22,30 @@
     'use strict';
 
     const MONTH_SECONDS = 30 * 24 * 3600;
+
+    function getBannerAlign() {
+        return GM_getValue('BANNER_ALIGN', 'right');
+    }
+
+    function setBannerAlign(align) {
+        GM_setValue('BANNER_ALIGN', align);
+    }
+
+    function applyBannerAlignToEl(el, align) {
+        if (align === 'left') {
+            el.style.left = '2px';
+            el.style.right = '';
+        } else {
+            el.style.right = '2px';
+            el.style.left = '';
+        }
+    }
+
+    function refreshBannerAlignOnPage(align) {
+        for (const el of document.querySelectorAll('.tc-crimes-icon, .tc-crimes-result')) {
+            applyBannerAlignToEl(el, align);
+        }
+    }
 
     function gmGet(url, headers) {
         return new Promise((resolve, reject) => {
@@ -194,7 +218,20 @@
             showApiKeyModal(GM_getValue('PUBLIC_ACCESS_TOKEN', ''), (newKey) => openCrimesModal(userId, newKey), null);
         });
 
-        btnRow.append(changeKeyBtn);
+        const alignBtn = document.createElement('button');
+        const updateAlignBtn = () => {
+            alignBtn.textContent = getBannerAlign() === 'left' ? 'Banner: Left' : 'Banner: Right';
+        };
+        updateAlignBtn();
+        alignBtn.style.cssText = 'padding:4px 10px;border:1px solid #555;border-radius:6px;background:transparent;color:#aaa;cursor:pointer;font-size:12px;';
+        alignBtn.addEventListener('click', () => {
+            const next = getBannerAlign() === 'left' ? 'right' : 'left';
+            setBannerAlign(next);
+            updateAlignBtn();
+            refreshBannerAlignOnPage(next);
+        });
+
+        btnRow.append(changeKeyBtn, alignBtn);
         titleRow.append(title, btnRow);
 
         const statusEl = document.createElement('div');
@@ -288,7 +325,8 @@
         icon.dataset.userId = userId;
         icon.textContent = '🔍';
         icon.title = 'Fetch crimes since last jailed';
-        icon.style.cssText = 'position:absolute;right:2px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);border:none;padding:1px 2px;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;';
+        const iconAlign = getBannerAlign();
+        icon.style.cssText = `position:absolute;${iconAlign}:2px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);border:none;padding:1px 2px;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;`;
         icon.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -356,7 +394,8 @@
     function replaceIconWithResult(icon, crimes, statusLog) {
         const span = document.createElement('span');
         span.className = 'tc-crimes-result';
-        span.style.cssText = 'position:absolute;right:2px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);padding:1px 2px;font-size:10px;line-height:1;border-radius:2px;cursor:default;color:#000;font-weight:bold;';
+        const spanAlign = getBannerAlign();
+        span.style.cssText = `position:absolute;${spanAlign}:2px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);padding:1px 2px;font-size:10px;line-height:1;border-radius:2px;cursor:default;color:#000;font-weight:bold;`;
         span.textContent = String(crimes);
         span.title = statusLog;
         icon.replaceWith(span);
@@ -406,7 +445,7 @@
 
     function scanForHonorWraps(root) {
         if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
-        const anchors = root.querySelectorAll('a[href^="/profiles.php?XID="]');
+        const anchors = root.querySelectorAll('a[href^"/profiles.php?XID="]');
         for (const a of anchors) {
             const match = (a.getAttribute('href') || '').match(/XID=(\d+)/);
             if (!match) continue;
