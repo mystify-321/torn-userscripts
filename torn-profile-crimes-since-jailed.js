@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn profile crimes since last jailed
 // @namespace    http://tampermonkey.net/
-// @version      2026-05-26_02
+// @version      2026-06-17_01
 // @description  Adds a "Fetch crimes" button on Torn profile pages showing crimes committed since last time jailed
 // @author       mystify-321
 // @match        https://www.torn.com/*
@@ -22,6 +22,27 @@
     'use strict';
 
     const MONTH_SECONDS = 30 * 24 * 3600;
+    const OVERLAY_ALIGN_KEY = 'OVERLAY_ALIGN';
+
+    function getOverlayAlign() {
+        return GM_getValue(OVERLAY_ALIGN_KEY, 'right') === 'left' ? 'left' : 'right';
+    }
+
+    function setOverlayAlign(align) {
+        GM_setValue(OVERLAY_ALIGN_KEY, align === 'left' ? 'left' : 'right');
+    }
+
+    function overlayPositionCss(align) {
+        return align === 'left' ? 'left:2px;right:auto;' : 'right:2px;left:auto;';
+    }
+
+    function applyOverlayAlignToAll() {
+        const align = getOverlayAlign();
+        document.querySelectorAll('.tc-crimes-icon, .tc-crimes-result').forEach((el) => {
+            el.style.left = align === 'left' ? '2px' : 'auto';
+            el.style.right = align === 'left' ? 'auto' : '2px';
+        });
+    }
 
     function gmGet(url, headers) {
         return new Promise((resolve, reject) => {
@@ -186,6 +207,18 @@
             btnRow.append(loadAllBtn);
         }
 
+        const alignBtn = document.createElement('button');
+        alignBtn.textContent = `Align: ${getOverlayAlign() === 'left' ? 'Left' : 'Right'}`;
+        alignBtn.title = 'Toggle left/right alignment of the results overlay on the hero banner';
+        alignBtn.style.cssText = 'padding:4px 10px;border:1px solid #555;border-radius:6px;background:transparent;color:#aaa;cursor:pointer;font-size:12px;';
+        alignBtn.addEventListener('click', () => {
+            const newAlign = getOverlayAlign() === 'left' ? 'right' : 'left';
+            setOverlayAlign(newAlign);
+            alignBtn.textContent = `Align: ${newAlign === 'left' ? 'Left' : 'Right'}`;
+            applyOverlayAlignToAll();
+        });
+        btnRow.append(alignBtn);
+
         const changeKeyBtn = document.createElement('button');
         changeKeyBtn.textContent = 'Change API key';
         changeKeyBtn.style.cssText = 'padding:4px 10px;border:1px solid #555;border-radius:6px;background:transparent;color:#aaa;cursor:pointer;font-size:12px;';
@@ -288,7 +321,7 @@
         icon.dataset.userId = userId;
         icon.textContent = '🔍';
         icon.title = 'Fetch crimes since last jailed';
-        icon.style.cssText = 'position:absolute;right:2px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);border:none;padding:1px 2px;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;';
+        icon.style.cssText = `position:absolute;${overlayPositionCss(getOverlayAlign())}top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);border:none;padding:1px 2px;cursor:pointer;font-size:10px;line-height:1;border-radius:2px;`;
         icon.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -356,7 +389,7 @@
     function replaceIconWithResult(icon, crimes, statusLog) {
         const span = document.createElement('span');
         span.className = 'tc-crimes-result';
-        span.style.cssText = 'position:absolute;right:2px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);padding:1px 2px;font-size:10px;line-height:1;border-radius:2px;cursor:default;color:#000;font-weight:bold;';
+        span.style.cssText = `position:absolute;${overlayPositionCss(getOverlayAlign())}top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.5);padding:1px 2px;font-size:10px;line-height:1;border-radius:2px;cursor:default;color:#000;font-weight:bold;`;
         span.textContent = String(crimes);
         span.title = statusLog;
         icon.replaceWith(span);
