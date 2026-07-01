@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Torn OC Crimes Filter
 // @namespace    http://tampermonkey.net/
-// @version      2026-07-01_01
-// @description  Filter the Organized Crimes list by joinable status, success chance color, and minimum success chance
+// @version      2026-07-01_02
+// @description  Filter the Organized Crimes list by joinable status, success chance color, minimum success chance, and OC level
 // @author       You
 // @match        https://www.torn.com/factions.php*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
@@ -20,7 +20,9 @@
         SHOW_ORANGE: 'oc_filter_show_orange',
         SHOW_RED: 'oc_filter_show_red',
         MIN_CHANCE: 'oc_filter_min_chance',
-        HIDE_OC_ALL_HIDDEN: 'oc_filter_hide_oc_all_hidden'
+        HIDE_OC_ALL_HIDDEN: 'oc_filter_hide_oc_all_hidden',
+        MIN_LEVEL: 'oc_filter_min_level',
+        MAX_LEVEL: 'oc_filter_max_level'
     };
 
     function hasClassPrefix(el, prefix) {
@@ -48,6 +50,11 @@
 
     function findRoleDivs(ocDiv) {
         return Array.from(ocDiv.querySelectorAll('div')).filter(div => getRoleInfo(div) !== null);
+    }
+
+    function getOcLevel(ocDiv) {
+        const levelEl = findDescendantWithClassPrefix(ocDiv, 'levelValue___');
+        return levelEl ? parseFloat(levelEl.textContent) || 0 : 0;
     }
 
     function isRecruitingTabActive() {
@@ -127,6 +134,28 @@
         minChanceWrapper.append(minChanceLabel, minChanceInput);
         content.appendChild(minChanceWrapper);
 
+        const createNumberInput = (label, key, defaultValue) => {
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'display:flex; flex-direction:column; font-size:12px;';
+            const labelEl = document.createElement('label');
+            labelEl.textContent = label;
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.style.cssText = 'width: 60px; padding: 4px; border: 1px solid #ccc; border-radius: 3px;';
+            input.value = GM_getValue(key, defaultValue);
+            input.oninput = () => {
+                GM_setValue(key, input.value);
+                applyFilters();
+            };
+            wrapper.append(labelEl, input);
+            content.appendChild(wrapper);
+            return input;
+        };
+
+        createNumberInput('Min Level', FILTER_KEYS.MIN_LEVEL, 0);
+        createNumberInput('Max Level', FILTER_KEYS.MAX_LEVEL, 999);
+
         createCheckbox('Hide OC if all roles hidden', FILTER_KEYS.HIDE_OC_ALL_HIDDEN, false, content);
 
         return filterContainer;
@@ -144,8 +173,16 @@
         const showRed = GM_getValue(FILTER_KEYS.SHOW_RED, true);
         const minChance = parseFloat(GM_getValue(FILTER_KEYS.MIN_CHANCE, 0)) || 0;
         const hideOcAllHidden = GM_getValue(FILTER_KEYS.HIDE_OC_ALL_HIDDEN, false);
+        const minLevel = parseFloat(GM_getValue(FILTER_KEYS.MIN_LEVEL, 0)) || 0;
+        const maxLevel = parseFloat(GM_getValue(FILTER_KEYS.MAX_LEVEL, 999)) || 999;
 
         document.querySelectorAll('.tt-oc2-list [data-oc-id]').forEach(ocDiv => {
+            const level = getOcLevel(ocDiv);
+            if (level < minLevel || level > maxLevel) {
+                ocDiv.style.display = 'none';
+                return;
+            }
+
             const roleDivs = findRoleDivs(ocDiv);
             let anyVisible = false;
 
