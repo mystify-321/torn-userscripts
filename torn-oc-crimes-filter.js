@@ -50,6 +50,20 @@
         return Array.from(ocDiv.querySelectorAll('div')).filter(div => getRoleInfo(div) !== null);
     }
 
+    function isRecruitingTabActive() {
+        const container = document.querySelector('[class*="buttonsContainer___"]');
+        if (!container) return false;
+        const activeButton = Array.from(container.querySelectorAll('button')).find(btn => hasClassPrefix(btn, 'active___'));
+        return !!activeButton && activeButton.textContent.trim() === 'Recruiting';
+    }
+
+    function resetVisibility() {
+        document.querySelectorAll('.tt-oc2-list [data-oc-id]').forEach(ocDiv => {
+            ocDiv.style.display = '';
+            findRoleDivs(ocDiv).forEach(roleDiv => { roleDiv.style.display = ''; });
+        });
+    }
+
     function createFilterArea() {
         const filterContainer = document.createElement('div');
         filterContainer.className = 'oc-filter-area';
@@ -119,6 +133,11 @@
     }
 
     function applyFilters() {
+        if (!isRecruitingTabActive()) {
+            resetVisibility();
+            return;
+        }
+
         const onlyJoinable = GM_getValue(FILTER_KEYS.ONLY_JOINABLE, false);
         const showGreen = GM_getValue(FILTER_KEYS.SHOW_GREEN, true);
         const showOrange = GM_getValue(FILTER_KEYS.SHOW_ORANGE, true);
@@ -172,12 +191,17 @@
     function observeMutations() {
         const observer = new MutationObserver(mutations => {
             for (const mut of mutations) {
-                if (mut.type !== 'childList' || !mut.addedNodes.length) continue;
-                scheduleRefresh();
-                break;
+                if (mut.type === 'childList' && mut.addedNodes.length) {
+                    scheduleRefresh();
+                    break;
+                }
+                if (mut.type === 'attributes' && mut.target.tagName === 'BUTTON') {
+                    scheduleRefresh();
+                    break;
+                }
             }
         });
-        observer.observe(document.body, { childList: true, subtree: true });
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
         scheduleRefresh();
     }
 
