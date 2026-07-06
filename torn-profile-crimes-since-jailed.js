@@ -23,6 +23,8 @@
 
     const MONTH_SECONDS = 30 * 24 * 3600;
     const OVERLAY_ALIGN_KEY = 'OVERLAY_ALIGN';
+    const LAST_TOO_MANY_REQUESTS = 0;
+    const LAST_TOO_MANY_REQUESTS_KEY = 'TOO_MANY_REQUESTS_TS'
 
     function getOverlayAlign() {
         return GM_getValue(OVERLAY_ALIGN_KEY, 'right') === 'left' ? 'left' : 'right';
@@ -63,12 +65,29 @@
     }
 
     async function fetchStat(userId, timestamp, apiKey) {
+        const last = GM_getValue(LAST_TOO_MANY_REQUESTS_KEY)
+        if(last !== null) {
+            if((Date.now() - Number(last)) < 61_000) {
+                throw new Error('Too many requests');
+            }
+        }
         let url = `https://api.torn.com/v2/user/${userId}/personalstats?stat=jailed,criminaloffenses`;
         if (timestamp != null) url += `&timestamp=${timestamp}`;
         const res = await gmGet(url, { Authorization: `ApiKey ${apiKey}` });
         if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
         const data = JSON.parse(res.responseText);
-        if (data.error) throw new Error(data.error.error || 'API error');
+        if (data.error) {
+            //console.error('Caught error when loading personal stats', data.error);
+            if(data.error.error == 'Too many requests') {
+                console.log('Too many requests, stored time in GM settings');
+                GM_setValue(LAST_TOO_MANY_REQUESTS_KEY, Date.now());
+                setTimeout(() => {
+                    window.alert('Try again, the timeout for crime calc should be ok to proceed now');
+                    //console.log('Try again');
+                }, 61_000);
+            }
+            throw new Error(data.error.error || 'API error');
+        }
         return data?.personalstats;
     }
 
@@ -87,8 +106,8 @@
         const steps = [1, 2, 3, 4, 5, 6, 8, 10, 12];
         let lastJailedTs = nowTs;
         let lastJailedMonths = 0;
-		let crimes = 0;
-		let maxedOut = false;
+        let crimes = 0;
+        let maxedOut = false;
 
         for (const m of steps) {
             const stepTs = nowTs - m * MONTH_SECONDS;
@@ -97,20 +116,20 @@
             if (jailedAt.value < jailedNow.value) {
                 break;
             } else {
-				lastJailedTs = stepTs;
+                lastJailedTs = stepTs;
                 lastJailedMonths = m;
-				crimes = offensesNow.value - offensesAt.value;
-			}
-			if(m === steps[steps.length-1]) {
-				maxedOut = true;
-			}
+                crimes = offensesNow.value - offensesAt.value;
+            }
+            if(m === steps[steps.length-1]) {
+                maxedOut = true;
+            }
         }
 
         if (lastJailedMonths === 0) {
             onStatus('Player was jailed within the last month.');
             return { crimes: 0, monthsAgo: 0 };
         }
-		
+
         return {
             crimes,
             monthsAgo: lastJailedMonths,
@@ -308,13 +327,13 @@
     }
 
     function injectCrimesIcon(anchor, userId) {
-		console.log('injectCrimesIcon')
+        console.log('injectCrimesIcon')
         const honorWrap = anchor.querySelector('.honor-text-wrap');
         if (!honorWrap) return;
         if (honorWrap.querySelector('.tc-crimes-icon, .tc-crimes-result')) {
-			console.log('injectCrimesIcon early return')
-			return;
-		}
+            console.log('injectCrimesIcon early return')
+            return;
+        }
         honorWrap.style.position = 'relative';
         const icon = document.createElement('button');
         icon.className = 'tc-crimes-icon';
@@ -336,52 +355,52 @@
     }
 
     function injectMiniProfileButton(wrapper, userId) {
-		try {
-		console.log('injectMiniProfileButton')
-        const buttonWrap = wrapper.querySelector('.buttons-wrap');
-        if (!buttonWrap || buttonWrap.querySelector('.tc-mini-crimes-btn')) {
-			//console.log('injectMiniProfileButton early return');
-			return;
-		}
-        const btn = document.createElement('span');
-        btn.className = 'profile-button tc-mini-crimes-btn';
-        const icon = document.createElement('span');
-        icon.style.fontSize = '20px';
-        icon.textContent = '🔍';
-        btn.appendChild(icon);
-        btn.style.cursor = 'pointer';
-        btn.title = 'Fetch crimes since last jailed';
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const apiKey = GM_getValue('PUBLIC_ACCESS_TOKEN', '');
-            if (!apiKey) {
-                showApiKeyModal('', (key) => openCrimesModal(userId, key), null);
-            } else {
-                openCrimesModal(userId, apiKey);
+        try {
+            //console.log('injectMiniProfileButton')
+            const buttonWrap = wrapper.querySelector('.buttons-wrap');
+            if (!buttonWrap || buttonWrap.querySelector('.tc-mini-crimes-btn')) {
+                //console.log('injectMiniProfileButton early return');
+                return;
             }
-        });
-        buttonWrap.appendChild(btn);
-		console.log('injectMiniProfileButton done')
-		}catch(e){
-			console.err('Failed injectMiniProfileButton',e);
-		}
+            const btn = document.createElement('span');
+            btn.className = 'profile-button tc-mini-crimes-btn';
+            const icon = document.createElement('span');
+            icon.style.fontSize = '20px';
+            icon.textContent = '🔍';
+            btn.appendChild(icon);
+            btn.style.cursor = 'pointer';
+            btn.title = 'Fetch crimes since last jailed';
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const apiKey = GM_getValue('PUBLIC_ACCESS_TOKEN', '');
+                if (!apiKey) {
+                    showApiKeyModal('', (key) => openCrimesModal(userId, key), null);
+                } else {
+                    openCrimesModal(userId, apiKey);
+                }
+            });
+            buttonWrap.appendChild(btn);
+            console.log('injectMiniProfileButton done')
+        }catch(e){
+            console.err('Failed injectMiniProfileButton',e);
+        }
     }
 
     function scanForMiniProfiles(root) {
         const wrappers = document.querySelectorAll('[class*="profile-mini-_wrapper___"]');
         //console.log('scanForMiniProfiles found '+wrappers.length+' wrappers');
-		for (const wrapper of wrappers) {
+        for (const wrapper of wrappers) {
             const link = wrapper.querySelector('a[href*="XID="]');
             if (!link) {
-				console.log('no profile link found in wrapper');
-				continue;
-			}
+                console.log('no profile link found in wrapper');
+                continue;
+            }
             const match = (link.getAttribute('href') || '').match(/XID=(\d+)/);
             if (!match) {
-				console.log('no profile link match found in link');
-				continue;
-			}
+                console.log('no profile link match found in link');
+                continue;
+            }
             injectMiniProfileButton(wrapper, match[1]);
         }
     }
