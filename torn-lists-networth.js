@@ -2,7 +2,7 @@
 // @name         Torn tools mugger addon
 // @description  A set to filters made for muggers in the game Torn. Which allow you to pick targets fast and efficiently
 // @namespace    http://tampermonkey.net/
-// @version      2026-03-08_02
+// @version      2026-07-06_01
 // @author       You
 // @match        https://www.torn.com/index.php*
 // @match        https://www.torn.com/page.php*
@@ -11,6 +11,8 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @license      MIT
+// @downloadURL https://update.greasyfork.org/scripts/568363/Torn%20tools%20mugger%20addon.user.js
+// @updateURL https://update.greasyfork.org/scripts/568363/Torn%20tools%20mugger%20addon.meta.js
 // ==/UserScript==
 
 // Set PUBLIC_ACCESS_TOKEN in Tampermonkey: Dashboard → this script → Storage (key: PUBLIC_ACCESS_TOKEN).
@@ -291,7 +293,7 @@
 
         /** Find honor-text-wrap and its user link; return { honorWrap, userId } or null. Only matches wraps with green/blue scouter arrow. */
         function getHonorWrapAndUserIdFromArrow(node) {
-            console.log('nw - getHonorWrapAndUserIdFromArrow', node);
+            //console.log('nw - getHonorWrapAndUserIdFromArrow', node);
             const honorWrap = node.closest('.honor-text-wrap');
             if (!honorWrap || !honorWrap.closest) return null;
             const userLink = honorWrap.closest('a[href*="profiles.php"]');
@@ -306,6 +308,7 @@
         function scanArrows(root) {
             if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
             const arrows = root.querySelectorAll('img[src*="green-arrow.svg"], img[src*="blue-arrow.svg"]');
+            //console.log('nw - scanArrows', arrows);
             for (const arrow of arrows) {
                 handleAddedArrow(arrow);
             }
@@ -331,12 +334,12 @@
         }
 
         function processRow(honorWrap, userId) {
-            console.log('nw - processRow', honorWrap, userId);
+            //console.log('nw - processRow', honorWrap, userId);
             
             if (honorWrap.dataset.networthDone === '1') return;
             honorWrap.dataset.networthDone = '1';
             
-            console.log('nw - processRow marked done', honorWrap, userId);
+            //console.log('nw - processRow marked done', honorWrap, userId);
 
 
             if (getComputedStyle(honorWrap).position === 'static') {
@@ -403,12 +406,12 @@
         }
 
         function handleAddedArrow(arrow) {
-            console.log('nw - handleAddedArrow', arrow);
+            //console.log('nw - handleAddedArrow', arrow);
             const found = getHonorWrapAndUserIdFromArrow(arrow);
             if (found) {
                 processRow(found.honorWrap, found.userId);
             }else{
-                console.log('nw - honor wrap not found for arrow');
+                //console.log('nw - honor wrap not found for arrow');
             }
         }
 
