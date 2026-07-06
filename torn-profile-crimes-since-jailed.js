@@ -86,18 +86,19 @@
 
         // 1-month steps up to 6, then every 2 months up to 12
         const steps = [1, 2, 3, 4, 5, 6, 8, 10, 12];
-        let lastJailedTs = null;
-        let lastJailedMonths = null;
+        let lastJailedTs = nowTs;
+        let lastJailedMonths = 0;
 
         for (const m of steps) {
             const stepTs = nowTs - m * MONTH_SECONDS;
             onStatus(`Checking jailed count ${m} month(s) ago...`);
             const jailedAt = await fetchStat(userId, 'jailed', stepTs, apiKey);
             if (jailedAt < jailedNow) {
-                lastJailedTs = stepTs;
-                lastJailedMonths = m - 1;
                 break;
-            }
+            } else {
+				lastJailedTs = stepTs;
+                lastJailedMonths = m;
+			}
         }
 
         if (lastJailedMonths === 0) {
