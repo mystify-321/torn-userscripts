@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn profile crimes since last jailed
 // @namespace    http://tampermonkey.net/
-// @version      2026-06-17_01
+// @version      2026-07-06_01
 // @description  Adds a "Fetch crimes" button on Torn profile pages showing crimes committed since last time jailed
 // @author       mystify-321
 // @match        https://www.torn.com/*
@@ -62,42 +62,47 @@
         return url.searchParams.get('XID');
     }
 
-    async function fetchStat(userId, stat, timestamp, apiKey) {
-        let url = `https://api.torn.com/v2/user/${userId}/personalstats?stat=${stat}`;
+    async function fetchStat(userId, timestamp, apiKey) {
+        let url = `https://api.torn.com/v2/user/${userId}/personalstats?stat=jailed,criminaloffenses`;
         if (timestamp != null) url += `&timestamp=${timestamp}`;
         const res = await gmGet(url, { Authorization: `ApiKey ${apiKey}` });
         if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
         const data = JSON.parse(res.responseText);
         if (data.error) throw new Error(data.error.error || 'API error');
-        return data?.personalstats?.[0]?.value ?? 0;
+        return data?.personalstats;
     }
 
     async function computeCrimesSinceLastJailed(userId, apiKey, onStatus) {
         const nowTs = Math.floor(Date.now() / 1000);
 
         onStatus('Fetching current jailed count...');
-        const jailedNow = await fetchStat(userId, 'jailed', nowTs, apiKey);
+        const [offensesNow, jailedNow] = await fetchStat(userId, nowTs, apiKey);
 
-        if (jailedNow === 0) {
+        if (jailedNow.value === 0) {
             onStatus('Player has never been jailed. Fetching current criminal offenses...');
-            const offensesNow = await fetchStat(userId, 'criminaloffenses', nowTs, apiKey);
-            return { crimes: offensesNow, neverJailed: true };
+            return { crimes: offensesNow.value, neverJailed: true };
         }
 
         // 1-month steps up to 6, then every 2 months up to 12
         const steps = [1, 2, 3, 4, 5, 6, 8, 10, 12];
         let lastJailedTs = nowTs;
         let lastJailedMonths = 0;
+		let crimes = 0;
+		let maxedOut = false;
 
         for (const m of steps) {
             const stepTs = nowTs - m * MONTH_SECONDS;
             onStatus(`Checking jailed count ${m} month(s) ago...`);
-            const jailedAt = await fetchStat(userId, 'jailed', stepTs, apiKey);
-            if (jailedAt < jailedNow) {
+            const [offensesAt, jailedAt] = await fetchStat(userId, stepTs, apiKey);
+            if (jailedAt.value < jailedNow.value) {
                 break;
             } else {
 				lastJailedTs = stepTs;
                 lastJailedMonths = m;
+				crimes = offensesNow.value - offensesAt.value;
+			}
+			if(m === steps[steps.length-1]) {
+				maxedOut = true;
 			}
         }
 
@@ -105,17 +110,11 @@
             onStatus('Player was jailed within the last month.');
             return { crimes: 0, monthsAgo: 0 };
         }
-
-        const offsetTs = lastJailedTs ?? (nowTs - 12 * MONTH_SECONDS);
-        onStatus('Fetching criminal offenses at time of last jail...');
-        const offensesAtJail = await fetchStat(userId, 'criminaloffenses', offsetTs, apiKey);
-        onStatus('Fetching current criminal offenses...');
-        const offensesNow = await fetchStat(userId, 'criminaloffenses', nowTs, apiKey);
-
+		
         return {
-            crimes: offensesNow - offensesAtJail,
+            crimes,
             monthsAgo: lastJailedMonths,
-            moreThanAYear: lastJailedTs === null,
+            moreThanAYear: maxedOut,
         };
     }
 
