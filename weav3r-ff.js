@@ -16,26 +16,7 @@
 
     const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const CACHE_KEY_PREFIX = 'ff_score_';
-    const staggerRequestTimeoutMs = 500;
     let staggeredRequestTimeEpoch = Date.now();
-
-    function getStaggeredRequestTime(){
-        const now = Date.now();
-        if (staggeredRequestTimeEpoch < now){
-            staggeredRequestTimeEpoch = now + staggerRequestTimeoutMs;
-            return null;
-        } else {
-            const time =  staggeredRequestTimeEpoch;
-            staggeredRequestTimeEpoch += staggerRequestTimeoutMs;
-            return time - now;
-        }
-    }
-
-    function awaitStaggeredRequestTime(){
-        const time = getStaggeredRequestTime();
-        if (time == null) Promise.resolve();
-        return new Promise(resolve => setTimeout(resolve, time));
-    }
 
     function loadCachedFfScore(userId){
         const cached = localStorage.getItem(CACHE_KEY_PREFIX + userId);
@@ -60,7 +41,6 @@
     }
 
     async function fetchFfScoresBatch(userIds){
-        await awaitStaggeredRequestTime();
         const key = GM_getValue('FF_SCOUTER_API_KEY');
         if (!key) return new Map();
         const url = `https://ffscouter.com/api/v1/get-stats?key=${key}&targets=${userIds.join(',')}`;
