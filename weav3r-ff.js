@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Load FF score on weav3r bazaar listings
 // @namespace    http://tampermonkey.net/
-// @version      2026-02-17
+// @version      2026-07-08_1
 // @description  try to take over the world!
 // @author       You
 // @match        https://weav3r.dev/*
@@ -52,12 +52,12 @@
     async function getFfScore(userId){
         const cached = loadCachedFfScore(userId);
         if (cached != null) return cached;
-        
+
         await awaitStaggeredRequestTime();
         const key = GM_getValue('FF_SCOUTER_API_KEY');
         if (!key) return null;
         const url = `https://ffscouter.com/api/v1/get-stats?key=${key}&targets=${userId}`;
-        //console.log('getFfScore: url', url);
+        console.log('getFfScore: url', url);
         const response = await new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -66,12 +66,13 @@
                 onerror: () => reject(new Error('GM_xmlhttpRequest failed'))
             });
         });
-        if (!response) return null;
-        if (response.status === 401 || response.status === 403) {
-            GM_setValue('FF_SCOUTER_API_KEY', null);
+        if (response.status < 200 || response.status >= 300) {
+            console.log('bad response', response);
+            if(response.status === 401 || response.status === 403){
+                GM_setValue('FF_SCOUTER_API_KEY', null);
+            }
             return null;
         }
-        if (response.status < 200 || response.status >= 300) return null;
         let data;
         try {
             data = JSON.parse(response.responseText);
@@ -129,7 +130,7 @@
     }
 
     async function processRootForBazaarLinks() {
-        if(Date.now() < staggeredRequestTimeEpoch + 2000) return; 
+        if(Date.now() < staggeredRequestTimeEpoch + 2000) return;
         staggeredRequestTimeEpoch = Date.now();
 
         const root = document.body;
