@@ -49,15 +49,22 @@
         localStorage.setItem(CACHE_KEY_PREFIX + userId, JSON.stringify({score, timestamp: Date.now()}));
     }
 
-    async function getFfScore(userId){
-        const cached = loadCachedFfScore(userId);
-        if (cached != null) return cached;
+    const FF_SCOUTER_BATCH_SIZE = 50;
 
+    function chunkArray(arr, size) {
+        const chunks = [];
+        for (let i = 0; i < arr.length; i += size) {
+            chunks.push(arr.slice(i, i + size));
+        }
+        return chunks;
+    }
+
+    async function fetchFfScoresBatch(userIds){
         await awaitStaggeredRequestTime();
         const key = GM_getValue('FF_SCOUTER_API_KEY');
-        if (!key) return null;
-        const url = `https://ffscouter.com/api/v1/get-stats?key=${key}&targets=${userId}`;
-        console.log('getFfScore: url', url);
+        if (!key) return new Map();
+        const url = `https://ffscouter.com/api/v1/get-stats?key=${key}&targets=${userIds.join(',')}`;
+        console.log('fetchFfScoresBatch: url', url);
         const response = await new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -66,25 +73,56 @@
                 onerror: () => reject(new Error('GM_xmlhttpRequest failed'))
             });
         });
+        const scores = new Map();
         if (response.status < 200 || response.status >= 300) {
             console.log('bad response', response);
             if(response.status === 401 || response.status === 403){
                 GM_setValue('FF_SCOUTER_API_KEY', null);
             }
-            return null;
+            return scores;
         }
         let data;
         try {
             data = JSON.parse(response.responseText);
         } catch (_) {
-            return null;
+            return scores;
         }
-        const score = data[0]?.fair_fight;
-        if (score && typeof score === 'number') {
-            setCachedFfScore(userId, score);
-            return score;
+        if (!Array.isArray(data)) return scores;
+        for (const entry of data) {
+            const playerId = entry?.player_id;
+            const score = entry?.fair_fight;
+            if (playerId != null && typeof score === 'number') {
+                const id = String(playerId);
+                scores.set(id, score);
+                setCachedFfScore(id, score);
+            }
         }
-        return null;
+        return scores;
+    }
+
+    async function getFfScores(userIds){
+        const scores = new Map();
+        const uncached = [];
+        for (const userId of userIds) {
+            const cached = loadCachedFfScore(userId);
+            if (cached != null) {
+                scores.set(userId, cached);
+            } else {
+                uncached.push(userId);
+            }
+        }
+        if (uncached.length === 0) return scores;
+
+        const key = GM_getValue('FF_SCOUTER_API_KEY');
+        if (!key) return scores;
+
+        for (const batch of chunkArray(uncached, FF_SCOUTER_BATCH_SIZE)) {
+            const batchScores = await fetchFfScoresBatch(batch);
+            for (const [userId, score] of batchScores) {
+                scores.set(userId, score);
+            }
+        }
+        return scores;
     }
 
     const BAZAAR_PATH = 'bazaar.php';
@@ -104,8 +142,7 @@
         return link && link.tagName === 'A' && getUserIdFromBazaarLink(link) != null;
     }
 
-    async function decorateLinkWithFfScore(link, userId) {
-        const score = await getFfScore(userId);
+    function decorateLinkWithFfScore(link, userId, score) {
         const base = (link.textContent || '').trim();
         if (score != null && typeof score === 'number') {
             const scoreSpan = document.createElement('span');
@@ -144,11 +181,19 @@
                 links.push(a);
             }
         }
+        const pending = [];
         for (const link of links) {
             if (link.dataset.ffProcessed) continue;
             const userId = getUserIdFromBazaarLink(link);
             if (userId == null) continue;
-            await decorateLinkWithFfScore(link, userId);
+            pending.push({link, userId});
+        }
+        if (pending.length === 0) return;
+
+        const userIds = [...new Set(pending.map(p => p.userId))];
+        const scores = await getFfScores(userIds);
+        for (const {link, userId} of pending) {
+            decorateLinkWithFfScore(link, userId, scores.get(userId) ?? null);
         }
     }
 
